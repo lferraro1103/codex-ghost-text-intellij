@@ -57,22 +57,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACT-01 | Unmapped | Pending |
-| ACT-02 | Unmapped | Pending |
-| PREV-01 | Unmapped | Pending |
-| PREV-02 | Unmapped | Pending |
-| ACPT-01 | Unmapped | Pending |
-| ACPT-02 | Unmapped | Pending |
-| CODEX-01 | Unmapped | Pending |
-| CODEX-02 | Unmapped | Pending |
-| SAFE-01 | Unmapped | Pending |
-| QUAL-01 | Unmapped | Pending |
+| ACT-01 | Phase 1 | Pending |
+| ACT-02 | Phase 1 | Pending |
+| PREV-01 | Phase 2 | Pending |
+| PREV-02 | Phase 2 | Pending |
+| ACPT-01 | Phase 2 | Pending |
+| ACPT-02 | Phase 2 | Pending |
+| CODEX-01 | Phase 4 | Pending |
+| CODEX-02 | Phase 3 | Pending |
+| SAFE-01 | Phase 4 | Pending |
+| QUAL-01 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to phases: 10
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-31*
-*Last updated: 2026-08-31 after initial definition*
+*Last updated: 2026-08-31 after roadmap creation*
