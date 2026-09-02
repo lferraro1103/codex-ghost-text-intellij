@@ -2,7 +2,7 @@
 
 **Researched:** 2026-09-01  
 **Domain:** IntelliJ Platform editor action, PSI selection validation, plugin scaffold  
-**Confidence:** MEDIUM — the APIs and build constraints were checked in current JetBrains documentation; the exact target platform must still be compiled locally after JDK 25 is installed.
+**Confidence:** MEDIUM — the APIs and build constraints were checked in current JetBrains documentation. The approved policy is resolved: compile against IntelliJ 2026.1 with Java 21, then verify and smoke-test the same package on IntelliJ 2026.2 running on Java 25.
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -52,7 +52,7 @@ Build Phase 1 as a minimal, static IntelliJ action: Kotlin `DumbAwareAction`, de
 
 The selection check must be a small PSI resolver, shared by `update()` and `actionPerformed()`. It must derive the first and last non-whitespace characters of the contiguous selection, resolve each to a `PsiComment` ancestor, require that they are the *same* comment, require the comment’s complete `TextRange` to be contained by the selection, and require both outer gaps to be whitespace only. This performs two `PsiFile.findElementAt()` calls rather than scanning the whole file, accepts line/block/doc comments represented as `PsiComment`, and rejects partial or mixed selections. `findElementAt()` returns a leaf; `PsiTreeUtil.getParentOfType()` is the documented way to obtain an exact parent type. [CITED: https://plugins.jetbrains.com/docs/intellij/psi-elements.html]
 
-**Primary recommendation:** Establish the Gradle/Kotlin plugin scaffold and one fieldless `DumbAwareAction`; keep selection parsing pure, cheap, and unit-testable. Before implementation, correct the project stack/environment mismatch: IntelliJ Platform 2026.2 requires Java 25, but this environment currently exposes Java 21 only. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
+**Primary recommendation:** Establish the Gradle/Kotlin plugin scaffold against IntelliJ Platform 2026.1 with the installed Java 21 toolchain and one fieldless `DumbAwareAction`; keep selection parsing pure, cheap, and unit-testable. Treat IntelliJ 2026.2 as a compatibility target whose interactive sandbox runs on a separately provisioned Java 25 runtime. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
 
 ## Architectural Responsibility Map
 
@@ -79,7 +79,7 @@ The selection check must be a small PSI resolver, shared by `update()` and `acti
 | Library / Platform | Version | Purpose | When to Use |
 |--------------------|---------|---------|-------------|
 | IntelliJ Platform test framework | Target-matched | Fast PSI/action tests | Add `TestFrameworkType.Platform`; add `TestFrameworkType.Plugin.Java` only for Java PSI fixture tests. [CITED: https://plugins.jetbrains.com/docs/intellij/light-and-heavy-tests.html] [CITED: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-testing-extension.html] |
-| Java toolchain | `25` | Compile/run against IntelliJ 2026.2 | Required if retaining the project’s selected `2026.2` platform target. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html] |
+| Java toolchain | `21` compile baseline; `25` compatibility runtime | Compile against IntelliJ 2026.1 and run the IntelliJ 2026.2 smoke-test sandbox | Java 21 preserves the approved 2026.1 baseline; IntelliJ 2026.2 itself requires Java 25 at runtime. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html] |
 
 ### Alternatives Considered
 
@@ -87,9 +87,9 @@ The selection check must be a small PSI resolver, shared by `update()` and `acti
 |------------|-----------|----------|
 | Static `<action>` registration | Runtime `ActionManager.registerAction()` | Runtime registration adds lifecycle/unregistration work and is unnecessary for a permanent menu/keymap action. Use descriptor registration. [CITED: https://plugins.jetbrains.com/docs/intellij/action-system.html] |
 | PSI-backed `PsiComment` validation | Regexes over `selectedText` | Regexes cannot reliably know language grammar, doc comments, or whether a comment is complete. |
-| Target 2026.2 + JDK 25 | Retarget 2026.1 + JDK 21 | Retargeting is viable only as an explicit project decision; it diverges from the recorded stack target. |
+| Compile directly against 2026.2 + JDK 25 | Compile against 2026.1 + JDK 21 and verify/smoke-test 2026.2 + JDK 25 | The approved multiversion policy keeps the older public API baseline while still requiring concrete evidence on the newer IDE. |
 
-**Installation / build setup:** Do not add application libraries in this phase. Create the Gradle wrapper at version 9.0.0 or later and configure JDK 25 before compiling the pinned 2026.2 target. The Platform Gradle Plugin documentation lists Gradle 9.0.0 and Java 17 as its own minimums, while the target-platform table raises 2026.2 runtime compatibility to Java 25. [CITED: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html] [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
+**Installation / build setup:** Do not add application libraries in this phase. Create the Gradle wrapper at version 9.0.0 or later and compile the pinned IntelliJ 2026.1 target with Java 21. Before the blocking 2026.2 manual compatibility checkpoint, provision a Java 25 runtime and launch IntelliJ 2026.2 with it; Plugin Verifier coverage alone does not establish interactive popup/Keymap behavior. [CITED: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html] [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
 
 ## Package Legitimacy Audit
 
@@ -209,11 +209,11 @@ This respects `TextRange`’s end-exclusive selection convention, accepts surrou
 
 ### Pitfall 1: Stale Java baseline
 
-**What goes wrong:** The current project stack couples IntelliJ 2026.2 with Java 21, then Gradle/IDE indexing fails because 2026.2 is a Java 25 platform.
+**What goes wrong:** A build or sandbox launch couples IntelliJ 2026.2 with Java 21, then Gradle/IDE indexing fails because 2026.2 is a Java 25 platform.
 
 **Why it happens:** The prior stack research was made before the current build-number documentation changed.
 
-**How to avoid:** Keep target `2026.2` and install/configure JDK 25 before the first Gradle build, or explicitly revise both target and stack to 2026.1/JDK 21. Do not silently mix them. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
+**How to avoid:** Compile the approved `2026.1` baseline with Java 21. Use Java 25 only when launching the `2026.2` compatibility sandbox, and record both runtimes in the phase summary after the blocking manual check passes. Do not silently mix the IDE and runtime pairs. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
 
 **Warning signs:** `Unsupported class file major version`, Gradle resolving but tests not launching, or `runIde` refusing the platform runtime.
 
@@ -301,14 +301,14 @@ The exact notification helper may be chosen during implementation; the important
 | A1 | A hidden but enabled action remains dispatchable through a user-assigned Keymap shortcut on the target 2026.2 IDE. | Architecture Pattern 3 | D-02 feedback would not appear; validate in `runIde` and adjust presentation policy if needed. |
 | A2 | Java PSI light-fixture tests can be supplied through `TestFrameworkType.Plugin.Java` with the selected IDEA target. | Validation Architecture | Tests may need a target-specific bundled Java plugin dependency. |
 
-## Open Questions
+## Resolved Questions
 
-1. **JDK 25 provisioning**
-   - What we know: the workspace has Temurin Java 21 only; target 2026.2 requires Java 25. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
-   - What's unclear: whether the user wants JDK 25 installed or wants an explicit retarget to 2026.1.
-   - Recommendation: retain the approved 2026.2 target and add JDK 25 as Wave 0 prerequisite; stop before implementation if it cannot be provisioned.
+1. **RESOLVED — JDK and IntelliJ compatibility policy**
+   - Approved baseline: compile and run automated tests against IntelliJ 2026.1 with Java 21.
+   - Newer target: run Plugin Verifier for IntelliJ 2026.2, then launch its blocking manual sandbox on a provisioned Java 25 runtime. [CITED: https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html]
+   - Completion rule: if Java 25 or IntelliJ 2026.2 is unavailable, stop at the human compatibility checkpoint; do not claim 2026.2 interactive support and do not change the Java 21 compile baseline.
 
-2. **Shortcut behavior while popup-hidden**
+2. **RESOLVED BY EXECUTION GATE — Shortcut behavior while popup-hidden**
    - What we know: D-02 requires actionable feedback for invalid shortcut context.
    - What's unclear: exact visibility/dispatch interaction in the pinned target build.
    - Recommendation: add a `runIde` manual acceptance check before declaring ACT-02 complete; the fallback is a visible-but-disabled-free action only in Keymap/Find Action, never in `EditorPopupMenu`.
@@ -317,14 +317,15 @@ The exact notification helper may be chosen during implementation; the important
 
 | Dependency | Required By | Available | Version | Fallback |
 |------------|-------------|-----------|---------|----------|
-| Java / JDK 25 | IntelliJ IDEA 2026.2 build and test target | ✗ | Java 21.0.12 installed | Explicitly retarget to 2026.1 only if user approves; otherwise install JDK 25. |
+| Java / JDK 21 | IntelliJ IDEA 2026.1 compile/test baseline | ✓ | Java 21.0.12 installed | — |
+| Java / JDK 25 | IntelliJ IDEA 2026.2 manual compatibility sandbox | ✗ | Java 21.0.12 installed | Provision Java 25 before the blocking 2026.2 checkpoint; stop there if unavailable. |
 | Git | Project scaffold/docs commits | ✓ | 2.53.0 | — |
 | Gradle wrapper | Repeatable build | ✗ (not yet created) | — | Generate wrapper in Phase 1 after JDK decision. |
 | Network access to JetBrains/Gradle repositories | IDE and Gradle dependency resolution | Not probed | — | Required for first build unless dependencies are cached. |
 
-**Missing dependencies with no fallback:** JDK 25 while retaining 2026.2.
+**Missing dependencies with no fallback:** Java 25 for the required IntelliJ 2026.2 interactive compatibility checkpoint. It is not required for the IntelliJ 2026.1/Java 21 compile baseline.
 
-**Missing dependencies with fallback:** Gradle is intentionally supplied by the generated wrapper; target can be revised to 2026.1/JDK 21 only by explicit decision.
+**Missing dependencies with fallback:** Gradle is intentionally supplied by the generated wrapper. The IDE baseline decision is complete and requires no retargeting.
 
 ## Validation Architecture
 
@@ -398,7 +399,7 @@ The exact notification helper may be chosen during implementation; the important
 
 **Confidence breakdown:**
 
-- Standard stack: MEDIUM — official current Gradle/Java docs confirm the build choices, but the stored 2026.2/JDK 21 combination must be corrected before a local proof build.
+- Standard stack: MEDIUM — official current Gradle/Java docs confirm the approved 2026.1/Java 21 compile baseline and the Java 25 runtime prerequisite for the 2026.2 compatibility sandbox.
 - Architecture: MEDIUM — public Action System and PSI APIs directly support the recommended design; keyboard dispatch while hidden is flagged for sandbox validation.
 - Pitfalls: MEDIUM — based on official action lifecycle/threading guidance and the concrete local JDK mismatch.
 

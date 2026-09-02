@@ -19,14 +19,14 @@ created: 2026-09-02
 | **Config file** | `build.gradle.kts` — created in Wave 0 |
 | **Quick run command** | `./gradlew.bat test --tests "*SelectedCommentResolverTest"` |
 | **Full suite command** | `./gradlew.bat test buildPlugin verifyPlugin` |
-| **Estimated runtime** | ~120 seconds |
+| **Estimated runtime** | Focused test ≤60 seconds; full build/verifier gate ≤120 seconds |
 
 ## Sampling Rate
 
 - **After every task commit:** Run `./gradlew.bat test`
 - **After every plan wave:** Run `./gradlew.bat test buildPlugin`
 - **Before `$gsd-verify-work`:** Run `./gradlew.bat test buildPlugin verifyPlugin` and the listed sandbox checks.
-- **Max feedback latency:** 120 seconds
+- **Max feedback latency:** ≤120 seconds
 
 ## Per-Task Verification Map
 
@@ -35,6 +35,7 @@ created: 2026-09-02
 | 01-01-01 | 01 | 1 | ACT-01 | T-01-01 | Resolver rejects malformed/stale selections without throwing or exposing selected text | light PSI | `./gradlew.bat test --tests "*SelectedCommentResolverTest"` | ❌ W0 | ⬜ pending |
 | 01-01-02 | 01 | 1 | ACT-01, ACT-02 | T-01-02 | Action does not mutate the document and revalidates before handoff | action/light IDE | `./gradlew.bat test --tests "*GenerateCodexGhostTextActionTest"` | ❌ W0 | ⬜ pending |
 | 01-01-03 | 01 | 1 | ACT-01, ACT-02 | — | Plugin packaging and declared platform compatibility resolve | Gradle/plugin verifier | `./gradlew.bat test buildPlugin verifyPlugin` | ❌ W0 | ⬜ pending |
+| 01-01-04 | 01 | 1 | ACT-01, ACT-02 | — | Popup and user-assigned Keymap behavior are confirmed interactively on 2026.1/Java 21 and 2026.2/Java 25 before compatibility is claimed | blocking human checkpoint | `N/A — runs only after 01-01-03 passes` | ✅ plan | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -51,7 +52,7 @@ created: 2026-09-02
 |----------|-------------|------------|-------------------|
 | Context popup visibility | ACT-01 | Native popup placement and PSI availability vary by running IDE/editor context. | Run sandbox IDE; select a full line and a full block comment; confirm direct action is visible. Select whitespace, partial comment, two comments, and code+comment; confirm it is absent. |
 | Keymap discovery and invalid shortcut feedback | ACT-02 | Keymap UI and dispatched shortcut are platform integration behavior. | In Settings / Keymap find `Generate Codex Ghost Text`, assign a temporary shortcut, invoke it with a valid selection and then an invalid one; confirm Spanish notification and unchanged document. |
-| Multiversion smoke check | ACT-01, ACT-02 | Target IDE behavior must be exercised across the support policy. | Run the sandbox/manual checks against IntelliJ 2026.1 (Java 21 baseline) and verify the packaged plugin with IntelliJ 2026.2 before use. |
+| Multiversion smoke check | ACT-01, ACT-02 | Target IDE behavior must be exercised across the support policy; Plugin Verifier cannot establish popup/Keymap interaction. | After the automated full gate passes, stop at Task 4. Run the complete popup and assigned-shortcut matrix in IntelliJ 2026.1 on Java 21 and IntelliJ 2026.2 on provisioned Java 25; approve before the phase summary claims compatibility. |
 
 ## Validation Sign-Off
 
@@ -59,7 +60,7 @@ created: 2026-09-02
 - [ ] Sampling continuity: no 3 consecutive tasks without automated verify
 - [ ] Wave 0 covers all MISSING references
 - [ ] No watch-mode flags
-- [ ] Feedback latency < 120s
+- [ ] Feedback latency ≤ 120s
 - [ ] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
