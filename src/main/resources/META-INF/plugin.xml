@@ -1,0 +1,21 @@
+<idea-plugin>
+  <id>com.leandro.codexghosttext</id>
+  <name>Codex Ghost Text</name>
+  <vendor email="leandro@localhost">Leandro</vendor>
+  <description>Generate a guarded Codex proposal from a selected comment.</description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <notificationGroup id="Codex Ghost Text" displayType="BALLOON" isLogByDefault="false" />
+  </extensions>
+
+  <actions>
+    <action id="com.leandro.codexghosttext.GenerateCodexGhostText"
+            class="com.leandro.codexghosttext.actions.GenerateCodexGhostTextAction"
+            text="Generate Codex Ghost Text"
+            description="Generate a Codex code proposal from the selected comment">
+      <add-to-group group-id="EditorPopupMenu" anchor="last" />
+    </action>
+  </actions>
+</idea-plugin>
