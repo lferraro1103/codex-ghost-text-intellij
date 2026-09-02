@@ -37,6 +37,19 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         )
     }
 
+    fun testInvalidPopupSelectionIsHiddenAndDoesNotChangeDocument() {
+        myFixture.configureByText("Sample.java", "class Sample {}\n")
+        val action = ActionManager.getInstance().getAction(ACTION_ID) as GenerateCodexGhostTextAction
+        val before = myFixture.editor.document.text
+        val event = editorEvent(action)
+
+        action.update(event)
+        assertFalse(event.presentation.isVisible)
+        action.actionPerformed(editorEvent(action))
+        assertEquals(before, myFixture.editor.document.text)
+        assertEquals("Seleccioná exactamente un comentario para generar código.", GenerateCodexGhostTextAction.INVALID_SELECTION_MESSAGE)
+    }
+
     private fun editorEvent(action: GenerateCodexGhostTextAction): AnActionEvent {
         val context: DataContext = SimpleDataContext.builder()
             .add(CommonDataKeys.PROJECT, project)
