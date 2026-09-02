@@ -11,7 +11,8 @@ import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 
 class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
     fun testFullLineCommentIsVisibleAndLeavesDocumentUnchanged() {
-        val document = myFixture.configureByText("Sample.java", "// create user\nclass Sample {}\n").document
+        myFixture.configureByText("Sample.java", "// create user\nclass Sample {}\n")
+        val document = myFixture.editor.document
         myFixture.editor.selectionModel.setSelection(0, "// create user".length)
 
         val action = ActionManager.getInstance().getAction(ACTION_ID) as GenerateCodexGhostTextAction
@@ -46,7 +47,7 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
             null,
             context,
             ActionPlaces.EDITOR_POPUP,
-            Presentation(action.templatePresentation),
+            action.templatePresentation.clone(),
             ActionManager.getInstance(),
             0,
         )
