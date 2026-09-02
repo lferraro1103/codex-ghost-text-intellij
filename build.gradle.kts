@@ -1,12 +1,13 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
-    kotlin("jvm") version "2.4.0"
-    id("org.jetbrains.intellij.platform") version "2.18.1"
+    kotlin("jvm")
+    id("org.jetbrains.intellij.platform")
 }
 
 group = "com.leandro"
-version = "0.1.0"
+version = providers.gradleProperty("pluginVersion").get()
 
 repositories {
     mavenCentral()
@@ -19,20 +20,26 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 
     intellijPlatform {
-        intellijIdea("2026.1")
+        intellijIdea(providers.gradleProperty("platformVersion").get())
         testFramework(TestFrameworkType.Platform)
         testFramework(TestFrameworkType.Plugin.Java)
     }
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(providers.gradleProperty("javaVersion").get().toInt())
 }
 
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
             sinceBuild = "261"
+        }
+    }
+    pluginVerification {
+        ides {
+            create(IntelliJPlatformType.IntellijIdeaCommunity, providers.gradleProperty("verifierTarget2026_1").get())
+            create(IntelliJPlatformType.IntellijIdeaCommunity, providers.gradleProperty("verifierTarget2026_2").get())
         }
     }
 }
