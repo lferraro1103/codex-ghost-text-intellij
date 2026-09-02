@@ -38,8 +38,8 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            create(IntelliJPlatformType.IntellijIdeaCommunity, providers.gradleProperty("verifierTarget2026_1").get())
-            create(IntelliJPlatformType.IntellijIdeaCommunity, providers.gradleProperty("verifierTarget2026_2").get())
+            create(IntelliJPlatformType.IntellijIdea, providers.gradleProperty("verifierTarget2026_1").get())
+            create(IntelliJPlatformType.IntellijIdea, providers.gradleProperty("verifierTarget2026_2").get())
         }
     }
 }
