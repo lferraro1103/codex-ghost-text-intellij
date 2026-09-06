@@ -10,7 +10,7 @@ Diagnostic connection only: executable discovery, owned stdio process, initializ
 
 ## Decisions
 
-- D-01: Native `codex` executable discovery from OS PATH and supported local npm installation layouts, with a clear missing-executable diagnostic. Never interpolate editor text into a command, execute a shell script, or spawn an interactive window. A narrowly scoped executable override may be added only if discovery needs it.
+- D-01: Native `codex` executable discovery from OS PATH and the OpenAI desktop-app installation layout, with a clear missing-executable diagnostic. Never interpolate editor text into a command, execute a shell script, or spawn an interactive window. A narrowly scoped executable override may be added only if discovery needs it.
 - D-02: One owned process/connection at a time per project; all I/O off EDT, bounded JSONL frames, deadlines, cancellation and shutdown. No persistent local socket listener or separate daemon install.
 - D-03: Reuse the user's ChatGPT/Codex account via App Server. Never request/read/store API keys, passwords, cookies or tokens; do not implement OAuth or change global Codex configuration. Reject API-key account mode instead of silently billing the API.
 - D-04: Add a native `Check Codex Connection` action in Tools/search, not a tool window. Fixed Spanish notifications for missing CLI, login required (`codex login` outside plugin), exhausted quota, timeout/disconnect and unsupported protocol. The ready message says the local account is available, not that a model generation has succeeded.

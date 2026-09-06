@@ -12,6 +12,12 @@
   </extensions>
 
   <actions>
+    <action id="com.leandro.codexghosttext.CheckCodexConnection"
+            class="com.leandro.codexghosttext.actions.CheckCodexConnectionAction"
+            text="Check Codex Connection"
+            description="Check the local Codex account connection without generating code">
+      <add-to-group group-id="ToolsMenu" anchor="last" />
+    </action>
     <action id="com.leandro.codexghosttext.GenerateCodexGhostText"
             class="com.leandro.codexghosttext.actions.GenerateCodexGhostTextAction"
             text="Generate Codex Ghost Text"

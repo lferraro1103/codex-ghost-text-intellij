@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 3
 current_phase_name: Acceso local a Codex
-status: planning
-stopped_at: Phase 2 implemented and verified automatically; manual IDE UAT deferred
-last_updated: "2026-09-06T14:58:00Z"
+status: blocked
+stopped_at: Phase 3 diagnostic implemented; Phase 4 blocked by unavailable enforceable zero-tool App Server capability
+last_updated: "2026-09-06T15:20:00Z"
 last_activity: 2026-09-06
-last_activity_desc: Corregido PSI desactualizado; 14 tests pasan y UAT manual registrado.
+last_activity_desc: Diagnóstico local seguro de Codex implementado; 25 tests y ZIP pasan. Verificador remoto diferido por TLS externo.
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: `.planning/PROJECT.md` (updated 2026-08-31)
 ## Current Position
 
 Phase: 3 of 4 (Acceso local a Codex)
-Plan: diagnostic connection planning
-Status: Phase 2 implemented; interactive UI checks remain deferred by user authorization.
-Last activity: 2026-09-06 — Phase 2 block preview, guarded Tab/Esc, 17 test cases and 2026.1/2026.2 verifier compatibility.
+Plan: diagnostic connection implementation complete
+Status: Phase 3 implemented; Phase 4 safety gate is blocked by App Server capability.
+Last activity: 2026-09-06 — Local account/quota diagnostic, 25 tests and installable ZIP generated.
 
-Progress: [█████░░░░░] 50% implemented; manual verification pending
+Progress: [███████░░░] 75% implemented; Phase 4 is safety-blocked and manual verification is pending
 
 ## Performance Metrics
 
@@ -73,6 +73,7 @@ Recent decisions affecting current work:
 |-------|-------|--------|
 | 1 | verification_deferred_human | $gsd-verify-work 1 |
 | 2 | verification_deferred_human | $gsd-verify-work 2 |
+| 3 | verification_deferred_human_and_remote | Run Tools > Check Codex Connection; retry `verifyPlugin` |
 
 User direction: "lo que te parezca conveniente, avanza fase por fase hasta terminar el plugin". Continue phases 2–4 despite this deferred UI gate; preserve its unverified status. Choose routine implementation defaults and fix test failures without repeated permission prompts.
 
@@ -98,5 +99,5 @@ User direction: "lo que te parezca conveniente, avanza fase por fase hasta termi
 ## Session Continuity
 
 Last session: 2026-09-06T13:56:00Z
-Stopped at: Phase 1 Task 4 human verification; user requested Phase 2
-Resume file: .planning/phases/01-invocaci-n-sobre-comentario/01-UAT.md
+Stopped at: Phase 4 safety gate. Do not create `thread/start`/`turn/start` integration without an enforceable zero-tool capability.
+Resume file: .planning/research/CODEX-SAFETY-PROTOCOL.md

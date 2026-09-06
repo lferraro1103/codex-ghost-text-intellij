@@ -12,7 +12,7 @@ El MVP avanza desde la invocación explícita sobre un comentario hasta una suge
 
 - [ ] **Phase 1: Invocación sobre comentario** - Seleccionar un comentario y disparar la acción nativa desde menú o atajo.
 - [ ] **Phase 2: Ghost text y control de propuesta** - Implementada; verificación visual/manual diferida.
-- [ ] **Phase 3: Acceso local a Codex** - Conectar de forma diagnóstica al App Server local usando la sesión existente.
+- [ ] **Phase 3: Acceso local a Codex** - Implementada; ejecución manual y verificador remoto pendientes.
 - [ ] **Phase 4: Generación segura y convivencia con el editor** - Entregar código de Codex como preview seguro y fiable dentro del flujo real.
 
 ## Phase Details
@@ -74,5 +74,5 @@ El MVP avanza desde la invocación explícita sobre un comentario hasta una suge
 |-------|----------------|--------|-----------|
 | 1. Invocación sobre comentario | 0/TBD | Not started | - |
 | 2. Ghost text y control de propuesta | 2/2 | Implemented — manual verification deferred | 2026-09-06 |
-| 3. Acceso local a Codex | 0/TBD | Not started | - |
+| 3. Acceso local a Codex | 1/1 | Implemented — runtime/manual and remote verifier deferred | 2026-09-06 |
 | 4. Generación segura y convivencia con el editor | 0/TBD | Not started | - |
