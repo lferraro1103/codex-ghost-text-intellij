@@ -5,7 +5,10 @@ import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataContext
-import com.intellij.openapi.actionSystem.Presentation
+import com.intellij.notification.Notification
+import com.intellij.notification.Notifications
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 
@@ -47,10 +50,70 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         assertFalse(event.presentation.isVisible)
         action.actionPerformed(editorEvent(action))
         assertEquals(before, myFixture.editor.document.text)
-        assertEquals("Seleccioná exactamente un comentario para generar código.", GenerateCodexGhostTextAction.INVALID_SELECTION_MESSAGE)
+        assertFalse(event.presentation.isEnabled)
     }
 
-    private fun editorEvent(action: GenerateCodexGhostTextAction): AnActionEvent {
+    fun testInvalidKeyboardInvocationEmitsExactlyOneFixedNotification() {
+        myFixture.configureByText("Sample.java", "class SecretSource {}")
+        myFixture.editor.selectionModel.setSelection(0, myFixture.editor.document.textLength)
+        val notifications = mutableListOf<Notification>()
+        project.messageBus.connect(testRootDisposable).subscribe(Notifications.TOPIC, object : Notifications {
+            override fun notify(notification: Notification) { notifications.add(notification) }
+        })
+        val action = GenerateCodexGhostTextAction()
+        val event = editorEvent(action, ActionPlaces.KEYBOARD_SHORTCUT)
+        val before = myFixture.editor.document.text
+        action.update(event)
+        assertTrue(event.presentation.isVisible)
+        assertTrue(event.presentation.isEnabled)
+        assertEmpty(notifications)
+        action.actionPerformed(event)
+        assertSize(1, notifications)
+        assertEquals("Seleccioná exactamente un comentario para generar código.", notifications.single().content)
+        assertEquals("Codex Ghost Text", notifications.single().groupId)
+        assertEquals(NotificationType.INFORMATION, notifications.single().type)
+        assertEquals(before, myFixture.editor.document.text)
+        notifications.forEach { it.expire() }
+    }
+
+    fun testValidKeyboardInvocationDoesNotNotifyOrMutate() {
+        myFixture.configureByText("Sample.java", "// create user")
+        myFixture.editor.selectionModel.setSelection(0, myFixture.editor.document.textLength)
+        val notifications = mutableListOf<Notification>()
+        project.messageBus.connect(testRootDisposable).subscribe(Notifications.TOPIC, object : Notifications {
+            override fun notify(notification: Notification) { notifications.add(notification) }
+        })
+        val action = GenerateCodexGhostTextAction()
+        val event = editorEvent(action, ActionPlaces.KEYBOARD_SHORTCUT)
+        action.update(event)
+        assertTrue(event.presentation.isEnabled)
+        val before = myFixture.editor.document.text
+        action.actionPerformed(event)
+        assertEmpty(notifications)
+        assertEquals(before, myFixture.editor.document.text)
+    }
+
+    fun testMissingEditorDisablesKeyboardActionAndHidesPopup() {
+        val action = GenerateCodexGhostTextAction()
+        for (place in listOf(ActionPlaces.KEYBOARD_SHORTCUT, ActionPlaces.EDITOR_POPUP)) {
+            val event = AnActionEvent(null, DataContext.EMPTY_CONTEXT, place,
+                action.templatePresentation.clone(), ActionManager.getInstance(), 0)
+            action.update(event)
+            assertFalse(event.presentation.isEnabled)
+            assertEquals(place != ActionPlaces.EDITOR_POPUP, event.presentation.isVisible)
+            action.actionPerformed(event)
+        }
+    }
+
+    fun testActionIsDirectPopupChildWithoutDefaultShortcut() {
+        val manager = ActionManager.getInstance()
+        val action = manager.getAction(ACTION_ID)
+        val popup = manager.getAction("EditorPopupMenu") as ActionGroup
+        assertTrue(popup.getChildren(null).contains(action))
+        assertEmpty(action.shortcutSet.shortcuts)
+    }
+
+    private fun editorEvent(action: GenerateCodexGhostTextAction, place: String = ActionPlaces.EDITOR_POPUP): AnActionEvent {
         val context: DataContext = SimpleDataContext.builder()
             .add(CommonDataKeys.PROJECT, project)
             .add(CommonDataKeys.EDITOR, myFixture.editor)
@@ -59,7 +122,7 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         return AnActionEvent(
             null,
             context,
-            ActionPlaces.EDITOR_POPUP,
+            place,
             action.templatePresentation.clone(),
             ActionManager.getInstance(),
             0,

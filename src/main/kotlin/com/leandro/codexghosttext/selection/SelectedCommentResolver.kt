@@ -3,9 +3,11 @@ package com.leandro.codexghosttext.selection
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.Document
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
 
 /** Validates a bounded editor selection without retaining editor or PSI state. */
@@ -17,9 +19,16 @@ object SelectedCommentResolver {
     }
 
     fun resolve(editor: Editor, psiFile: PsiFile): SelectedComment? {
-        val start = editor.selectionModel.selectionStart
-        val end = editor.selectionModel.selectionEnd
-        val text = editor.document.charsSequence
+        return resolve(editor.document, psiFile, editor.selectionModel.selectionStart, editor.selectionModel.selectionEnd)
+    }
+
+    internal fun resolve(document: Document, psiFile: PsiFile, start: Int, end: Int): SelectedComment? {
+        if (!psiFile.isValid) return null
+        val manager = PsiDocumentManager.getInstance(psiFile.project)
+        // Never resolve current offsets against an old or unrelated PSI snapshot.
+        // In particular, do not force a commit from the BGT presentation path.
+        if (manager.getCachedDocument(psiFile) !== document || !manager.isCommitted(document)) return null
+        val text = document.charsSequence
         if (start < 0 || end < start || end > text.length || start == end) return null
 
         val first = firstNonWhitespace(text, start, end) ?: return null
