@@ -1,0 +1,6 @@
+[
+ {"id":"PREV-01","text":"User can see one generated code block below the selected comment without the document being modified."},
+ {"id":"PREV-02","text":"User's preview is discarded when they edit, change selection/editor, or start another generation."},
+ {"id":"ACPT-01","text":"User can insert a fresh preview with Tab as one undoable document change."},
+ {"id":"ACPT-02","text":"User can discard a preview with Esc, while Tab and Esc retain normal IDE behavior when no preview is active."}
+]

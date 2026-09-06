@@ -11,7 +11,7 @@ El MVP avanza desde la invocación explícita sobre un comentario hasta una suge
 - Decimal phases: urgent insertions between planned phases, marked `INSERTED`.
 
 - [ ] **Phase 1: Invocación sobre comentario** - Seleccionar un comentario y disparar la acción nativa desde menú o atajo.
-- [ ] **Phase 2: Ghost text y control de propuesta** - Previsualizar, aceptar y descartar una propuesta local sin alterar el documento antes de tiempo.
+- [ ] **Phase 2: Ghost text y control de propuesta** - Implementada; verificación visual/manual diferida.
 - [ ] **Phase 3: Acceso local a Codex** - Conectar de forma diagnóstica al App Server local usando la sesión existente.
 - [ ] **Phase 4: Generación segura y convivencia con el editor** - Entregar código de Codex como preview seguro y fiable dentro del flujo real.
 
@@ -73,6 +73,6 @@ El MVP avanza desde la invocación explícita sobre un comentario hasta una suge
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Invocación sobre comentario | 0/TBD | Not started | - |
-| 2. Ghost text y control de propuesta | 0/TBD | Not started | - |
+| 2. Ghost text y control de propuesta | 2/2 | Implemented — manual verification deferred | 2026-09-06 |
 | 3. Acceso local a Codex | 0/TBD | Not started | - |
 | 4. Generación segura y convivencia con el editor | 0/TBD | Not started | - |

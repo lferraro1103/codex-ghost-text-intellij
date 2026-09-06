@@ -1,0 +1,1 @@
+[{"id":"preview","text":"Static multiline code preview below comment","elements":["static-content"]},{"id":"trigger","text":"Native action to show preview, accept with Tab, discard with Esc","elements":["interactive-control"]}]

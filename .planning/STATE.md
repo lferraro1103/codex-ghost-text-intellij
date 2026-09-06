@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
-current_phase_name: Invocación sobre comentario
-status: awaiting_human_verification
-stopped_at: Phase 1 automated audit fixes complete; Task 4 human checkpoint pending
-last_updated: "2026-09-06T13:56:00Z"
+current_phase: 3
+current_phase_name: Acceso local a Codex
+status: planning
+stopped_at: Phase 2 implemented and verified automatically; manual IDE UAT deferred
+last_updated: "2026-09-06T14:58:00Z"
 last_activity: 2026-09-06
 last_activity_desc: Corregido PSI desactualizado; 14 tests pasan y UAT manual registrado.
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 1
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 2
 ---
 
 # Project State
@@ -23,22 +23,22 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-08-31)
 
 **Core value:** Convertir un comentario seleccionado en una propuesta de código insertable con `Tab`, sin salir del editor ni requerir una API key.
-**Current focus:** Phase 1 — Invocación sobre comentario
+**Current focus:** Phase 3 — Acceso local a Codex
 
 ## Current Position
 
-Phase: 1 of 4 (Invocación sobre comentario)
-Plan: 01 — Tasks 1–3 implemented; Task 4 awaits human approval
-Status: Awaiting human verification; Phase 2 requested, not yet started
-Last activity: 2026-09-06 — Quick 260906-f1y repaired stale PSI handling and audit coverage (14 passing tests).
+Phase: 3 of 4 (Acceso local a Codex)
+Plan: diagnostic connection planning
+Status: Phase 2 implemented; interactive UI checks remain deferred by user authorization.
+Last activity: 2026-09-06 — Phase 2 block preview, guarded Tab/Esc, 17 test cases and 2026.1/2026.2 verifier compatibility.
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50% implemented; manual verification pending
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 2
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -65,12 +65,22 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Resolver el checkpoint manual 01-01-04 en ambas versiones o autorizar expresamente diferirlo al avanzar a fase 2. No marcarlo aprobado sin evidencia.
+- Ejecutar al final la matriz manual integrada; diferida con autorización del usuario, no aprobada.
+
+## Deferred Verification
+
+| Phase | State | Resume |
+|-------|-------|--------|
+| 1 | verification_deferred_human | $gsd-verify-work 1 |
+| 2 | verification_deferred_human | $gsd-verify-work 2 |
+
+User direction: "lo que te parezca conveniente, avanza fase por fase hasta terminar el plugin". Continue phases 2–4 despite this deferred UI gate; preserve its unverified status. Choose routine implementation defaults and fix test failures without repeated permission prompts.
 
 ### Blockers/Concerns
 
 - Confirmar durante la planificación de las fases 2–4 las APIs públicas del baseline de IntelliJ y el schema exacto del App Server instalado.
-- Phase 1 UI checkpoint unapproved; details in `phases/01-invocaci-n-sobre-comentario/01-UAT.md`. ROADMAP completion is intentionally not advanced by this quick task. Its old "Not started" label is stale; implementation exists, phase completion does not.
+- Phase 1 and 2 UI checkpoints are unapproved; final integrated UAT is required before release.
+- Phase 4 text generation is currently fail-closed pending an enforceable App Server zero-tool capability; see `research/CODEX-SAFETY-PROTOCOL.md`.
 
 ### Quick Tasks Completed
 
