@@ -8,6 +8,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
 import com.leandro.codexghosttext.selection.SelectedCommentResolver
+import com.leandro.codexghosttext.preview.GhostPreviewService
 
 class GenerateCodexGhostTextAction : DumbAwareAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -24,9 +25,15 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
     }
 
     override fun actionPerformed(event: AnActionEvent) {
-        if (SelectedCommentResolver.from(event) != null) return
+        val selectedComment = SelectedCommentResolver.from(event)
+        val editor = event.getData(CommonDataKeys.EDITOR)
+        val project = event.project
+        if (selectedComment != null && editor != null && project != null) {
+            project.getService(GhostPreviewService::class.java).showFixture(editor, selectedComment)
+            return
+        }
 
-        val project = event.project ?: return
+        project ?: return
         NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP_ID)
             .createNotification(INVALID_SELECTION_MESSAGE, NotificationType.INFORMATION)
