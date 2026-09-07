@@ -38,6 +38,18 @@ class GhostPreviewServiceTest : LightJavaCodeInsightFixtureTestCase() {
         assertFalse(myFixture.editor.document.text.contains("val item = 1"))
     }
 
+    fun testNavigationAndSelectionChangesKeepPreviewAcceptable() {
+        myFixture.configureByText("Sample.java", "// build item\nclass Sample {}")
+        myFixture.editor.selectionModel.setSelection(0, "// build item".length)
+        assertTrue(service.show(myFixture.editor, TextRange(0, "// build item".length), "val item = 1"))
+
+        myFixture.editor.caretModel.moveToOffset(myFixture.editor.document.textLength)
+        myFixture.editor.selectionModel.removeSelection()
+
+        assertTrue(service.acceptIfFresh(myFixture.editor))
+        assertEquals("// build item\nval item = 1\nclass Sample {}", myFixture.editor.document.text)
+    }
+
     fun testRejectsUnsafeInlineCommentAndOversizedProposal() {
         myFixture.configureByText("Sample.java", "/* explain */ class Sample {}")
         myFixture.editor.selectionModel.setSelection(0, "/* explain */".length)
