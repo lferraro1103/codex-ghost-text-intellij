@@ -9,6 +9,7 @@
   <extensions defaultExtensionNs="com.intellij">
     <notificationGroup id="Codex Ghost Text" displayType="BALLOON" isLogByDefault="false" />
     <applicationService serviceImplementation="com.leandro.codexghosttext.editor.GhostKeyHandlerInstaller" />
+    <typedHandler implementation="com.leandro.codexghosttext.editor.CodexGhostTypedHandler" />
   </extensions>
 
   <actions>

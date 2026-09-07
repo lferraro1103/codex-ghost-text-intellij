@@ -10,7 +10,7 @@ import com.leandro.codexghosttext.preview.GhostPreviewService
 import java.awt.AWTEvent
 import java.awt.event.KeyEvent
 
-/** Captures proposal keys before IntelliJ keymaps and other completion plugins consume them. */
+/** Captures Esc globally so an active proposal can always be dismissed without editing the document. */
 @Service(Service.Level.APP)
 class GhostKeyHandlerInstaller : Disposable {
     private val dispatcher = IdeEventQueue.EventDispatcher(::dispatch)
@@ -21,7 +21,7 @@ class GhostKeyHandlerInstaller : Disposable {
 
     private fun dispatch(event: AWTEvent): Boolean {
         if (event !is KeyEvent || event.id != KeyEvent.KEY_PRESSED || event.isConsumed) return false
-        if (!isAcceptKey(event) && event.keyCode != KeyEvent.VK_ESCAPE) return false
+        if (event.keyCode != KeyEvent.VK_ESCAPE) return false
         val dataContext = DataManager.getInstance().getDataContext(event.component)
         val preview = dataContext.getData(CommonDataKeys.PROJECT)
             ?.getService(GhostPreviewService::class.java)
@@ -31,22 +31,10 @@ class GhostKeyHandlerInstaller : Disposable {
                 .map { it.getService(GhostPreviewService::class.java) }
                 .firstOrNull { it.hasActivePreview() }
             ?: return false
-        val consumed = when {
-            isAcceptKey(event) -> {
-                preview.acceptActiveIfFresh()
-                // Do not let the key type into the editor even if a stale preview was rejected.
-                true
-            }
-            event.keyCode == KeyEvent.VK_ESCAPE -> preview.cancel()
-            else -> false
-        }
+        val consumed = preview.cancel()
         if (consumed) event.consume()
         return consumed
     }
-
-    /** Supports the physical pipe key across common Spanish and US keyboard layouts. */
-    private fun isAcceptKey(event: KeyEvent): Boolean =
-        event.keyCode == KeyEvent.VK_BACK_SLASH || event.keyCode == KeyEvent.VK_BACK_QUOTE || event.keyChar == '|'
 
     override fun dispose() = Unit
 }
