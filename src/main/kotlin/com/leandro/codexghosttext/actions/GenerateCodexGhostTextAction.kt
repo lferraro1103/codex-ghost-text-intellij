@@ -7,8 +7,11 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.application.ApplicationManager
 import com.leandro.codexghosttext.selection.SelectedCommentResolver
 import com.leandro.codexghosttext.preview.GhostPreviewService
+import com.leandro.codexghosttext.codex.CodexGenerationService
+import com.leandro.codexghosttext.codex.GenerationResult
 
 class GenerateCodexGhostTextAction : DumbAwareAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -29,7 +32,19 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val editor = event.getData(CommonDataKeys.EDITOR)
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
-            project.getService(GhostPreviewService::class.java).showFixture(editor, selectedComment)
+            val snapshot = editor.document.text
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val result = project.getService(CodexGenerationService::class.java)
+                    .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed || editor.isDisposed) return@invokeLater
+                    when (result) {
+                        is GenerationResult.Success -> project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
+                        is GenerationResult.Failure -> NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
+                            .createNotification(result.message, NotificationType.WARNING).notify(project)
+                    }
+                }
+            }
             return
         }
 
