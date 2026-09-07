@@ -1,6 +1,8 @@
 .gradle/
 .intellijPlatform/
 .kotlin/
+.gsd/
+.planning/
 build/
 out/
 hs_err_pid*.log
