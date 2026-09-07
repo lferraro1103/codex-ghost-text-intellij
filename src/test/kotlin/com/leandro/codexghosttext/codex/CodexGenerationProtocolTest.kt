@@ -22,6 +22,19 @@ class CodexGenerationProtocolTest {
     }
 
     @Test
+    fun `extracts the turn id for safe interruption`() {
+        val response = """{"jsonrpc":"2.0","id":3,"result":{"turn":{"id":"turn_local_456"}}}"""
+        assertEquals("turn_local_456", response.turnId())
+    }
+
+    @Test
+    fun `does not confuse a thread id with a turn id`() {
+        val response = """{"jsonrpc":"2.0","id":3,"result":{"thread":{"id":"thr_1"},"turn":{"id":"turn_2"}}}"""
+        assertEquals("thr_1", response.threadId())
+        assertEquals("turn_2", response.turnId())
+    }
+
+    @Test
     fun `recognizes an error response without treating a successful response as an error`() {
         assertEquals(true, """{"jsonrpc":"2.0","id":3,"error":{"code":-32602}}""".isJsonRpcError())
         assertEquals(false, """{"jsonrpc":"2.0","id":3,"result":{}}""".isJsonRpcError())

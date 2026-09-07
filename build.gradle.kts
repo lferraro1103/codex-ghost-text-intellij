@@ -33,11 +33,12 @@ kotlin {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "261"
+            sinceBuild = providers.gradleProperty("minimumBuild").get()
         }
     }
     pluginVerification {
         ides {
+            create(IntelliJPlatformType.IntellijIdea, providers.gradleProperty("verifierTarget2025_3").get())
             create(IntelliJPlatformType.IntellijIdea, providers.gradleProperty("verifierTarget2026_1").get())
             create(IntelliJPlatformType.IntellijIdea, providers.gradleProperty("verifierTarget2026_2").get())
         }

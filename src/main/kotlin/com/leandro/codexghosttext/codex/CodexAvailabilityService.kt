@@ -35,7 +35,7 @@ class CodexAvailabilityService : Disposable {
 
             process.outputStream.bufferedWriter().use { writer ->
                 process.inputStream.bufferedReader().use { reader ->
-                    writer.jsonRpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.7\"}}")
+                    writer.jsonRpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.8\"}}")
                     if (CodexProtocol.responseForId(reader, 1) == null) return CodexDiagnostic.CONNECTION_FAILED
                     writer.jsonRpcNotification("initialized", "{}")
 
