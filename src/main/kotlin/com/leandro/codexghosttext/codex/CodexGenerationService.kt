@@ -29,7 +29,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
             active = process
             process.discardErrorOutput()
             process.outputStream.bufferedWriter().use { writer -> process.inputStream.bufferedReader().use { reader ->
-                writer.rpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.5\"}}")
+                writer.rpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.6\"}}")
                 val initialization = CodexProtocol.responseForId(reader, 1)
                     ?: return GenerationResult.Failure("No pude iniciar Codex local.")
                 if (initialization.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó la inicialización local.")

@@ -24,13 +24,22 @@ class GhostBlockRenderer(
 
     override fun paint(inlay: com.intellij.openapi.editor.Inlay<*>, graphics: Graphics, targetRegion: Rectangle, textAttributes: com.intellij.openapi.editor.markup.TextAttributes) {
         val oldColor = graphics.color
-        val foreground = editor.colorsScheme.defaultForeground
-        graphics.color = Color(foreground.red, foreground.green, foreground.blue, 150)
         val metrics = graphics.getFontMetrics(editor.colorsScheme.getFont(EditorFontType.PLAIN))
         graphics.font = editor.colorsScheme.getFont(EditorFontType.PLAIN)
         lines.forEachIndexed { index, line ->
-            graphics.drawString(line, targetRegion.x, targetRegion.y + metrics.ascent + index * editor.lineHeight)
+            val lineY = targetRegion.y + index * editor.lineHeight
+            val lineWidth = metrics.stringWidth(line)
+            graphics.color = INSERT_BACKGROUND
+            graphics.fillRect(targetRegion.x, lineY, lineWidth, editor.lineHeight)
+            graphics.color = INSERT_FOREGROUND
+            graphics.drawString(line, targetRegion.x, lineY + metrics.ascent)
         }
         graphics.color = oldColor
+    }
+
+    private companion object {
+        /** Green insertion treatment; no red region exists because this plugin never deletes document text. */
+        val INSERT_BACKGROUND = Color(68, 140, 79, 78)
+        val INSERT_FOREGROUND = Color(150, 224, 156, 205)
     }
 }

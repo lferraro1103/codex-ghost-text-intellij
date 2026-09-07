@@ -1,7 +1,6 @@
 package com.leandro.codexghosttext.preview
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.Document
@@ -11,7 +10,6 @@ import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.editor.EditorFactory
 import com.leandro.codexghosttext.selection.SelectedComment
 
@@ -28,6 +26,7 @@ class GhostPreviewService(private val project: Project) : Disposable {
         val document = editor.document
         val line = document.getLineNumber(comment.endOffset)
         if (!safeLineTail(document, comment.endOffset, line)) return false
+        val indentedProposal = proposal.withBaseIndent(leadingIndent(document, line))
         val child = Disposer.newDisposable("Codex Ghost Text preview")
         val snapshot = ProposalPreview(
             editor = editor,
@@ -35,11 +34,11 @@ class GhostPreviewService(private val project: Project) : Disposable {
             commentEnd = comment.endOffset,
             commentLine = line,
             stamp = document.modificationStamp,
-            proposal = proposal,
+            proposal = indentedProposal,
             disposable = child,
         )
         val inlay = editor.inlayModel.addBlockElement(
-            document.getLineEndOffset(line), false, false, 0, GhostBlockRenderer(editor, proposal),
+            document.getLineEndOffset(line), false, false, 0, GhostBlockRenderer(editor, indentedProposal),
         ) ?: run { Disposer.dispose(child); return false }
         snapshot.inlay = inlay
         Disposer.register(child, inlay)
@@ -87,6 +86,30 @@ class GhostPreviewService(private val project: Project) : Disposable {
     private fun safeLineTail(document: Document, commentEnd: Int, line: Int): Boolean {
         val end = document.getLineEndOffset(line)
         return (commentEnd until end).all { document.charsSequence[it].isWhitespace() }
+    }
+
+    /**
+     * Codex returns a standalone fragment. Anchor it to the selected comment's
+     * indentation while retaining the fragment's own nested indentation.
+     */
+    private fun String.withBaseIndent(baseIndent: String): String {
+        val lines = lines()
+        val minimumIndent = lines.asSequence()
+            .filter { it.isNotBlank() }
+            .map { it.takeWhile { character -> character == ' ' || character == '\t' } }
+            .minWithOrNull(compareBy { it.length })
+            .orEmpty()
+        return lines.joinToString("\n") { line ->
+            if (line.isBlank()) "" else baseIndent + line.removePrefix(minimumIndent)
+        }
+    }
+
+    private fun leadingIndent(document: Document, line: Int): String {
+        val start = document.getLineStartOffset(line)
+        val end = document.getLineEndOffset(line)
+        return document.charsSequence.subSequence(start, end)
+            .takeWhile { character -> character == ' ' || character == '\t' }
+            .toString()
     }
 
     private fun isFresh(active: ProposalPreview, editor: Editor): Boolean =

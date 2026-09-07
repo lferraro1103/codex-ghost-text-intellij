@@ -50,6 +50,19 @@ class GhostPreviewServiceTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals("// build item\nval item = 1\nclass Sample {}", myFixture.editor.document.text)
     }
 
+    fun testAcceptanceUsesTheSelectedCommentsIndentation() {
+        myFixture.configureByText("Sample.java", "class Sample {\n    // build item\n}\n")
+        val commentEnd = "class Sample {\n    // build item".length
+        myFixture.editor.selectionModel.setSelection(commentEnd - "// build item".length, commentEnd)
+
+        assertTrue(service.show(myFixture.editor, TextRange(commentEnd - "// build item".length, commentEnd), "public void build() {\n    value();\n}"))
+        assertTrue(service.acceptIfFresh(myFixture.editor))
+        assertEquals(
+            "class Sample {\n    // build item\n    public void build() {\n        value();\n    }\n}\n",
+            myFixture.editor.document.text,
+        )
+    }
+
     fun testRejectsUnsafeInlineCommentAndOversizedProposal() {
         myFixture.configureByText("Sample.java", "/* explain */ class Sample {}")
         myFixture.editor.selectionModel.setSelection(0, "/* explain */".length)
