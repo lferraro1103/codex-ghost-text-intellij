@@ -1,6 +1,6 @@
 # Codex Ghost Text for IntelliJ
 
-Plugin personal para IntelliJ IDEA que transforma un comentario seleccionado en una propuesta de código generada por Codex local. La propuesta se muestra como *ghost text* verde debajo del comentario y el archivo no cambia hasta aceptarla.
+Plugin para IntelliJ IDEA que transforma un comentario seleccionado en una propuesta de código generada por Codex local. La propuesta se muestra como *ghost text* verde debajo del comentario y el archivo no cambia hasta aceptarla.
 
 No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuenta normal de ChatGPT.
 
@@ -98,4 +98,4 @@ Para ejecutar las pruebas:
 
 ## Estado
 
-La versión actual es **0.1.8**. Es un plugin personal y local; no está publicado en JetBrains Marketplace.
+La versión actual es **0.1.8**. Es un plugin local; no está publicado en JetBrains Marketplace.
