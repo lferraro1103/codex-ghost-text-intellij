@@ -12,6 +12,7 @@ import com.leandro.codexghosttext.selection.SelectedCommentResolver
 import com.leandro.codexghosttext.preview.GhostPreviewService
 import com.leandro.codexghosttext.codex.CodexGenerationService
 import com.leandro.codexghosttext.codex.GenerationResult
+import com.leandro.codexghosttext.status.CodexGenerationStatusService
 
 class GenerateCodexGhostTextAction : DumbAwareAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -35,9 +36,8 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
             project.getService(CodexGenerationService::class.java).cancel()
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
-            val loadingNotification = NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                .createNotification("Generando propuesta con Codex…", NotificationType.INFORMATION)
-            loadingNotification.notify(project)
+            val generationStatus = project.getService(CodexGenerationStatusService::class.java)
+            val request = generationStatus.show()
             ApplicationManager.getApplication().executeOnPooledThread {
                 val generation = project.getService(CodexGenerationService::class.java)
                 var waits = 0
@@ -47,7 +47,7 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 val result = generation
                     .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
                 ApplicationManager.getApplication().invokeLater {
-                    loadingNotification.expire()
+                    generationStatus.hide(request)
                     // The selected comment is only input to the request. The user can navigate
                     // elsewhere while Codex works; an edit still invalidates the snapshot.
                     if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp) return@invokeLater
