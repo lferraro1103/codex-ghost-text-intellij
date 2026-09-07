@@ -1,59 +1,38 @@
 package com.leandro.codexghosttext.editor
 
+import com.intellij.ide.DataManager
+import com.intellij.ide.IdeEventQueue
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.components.Service
-import com.intellij.openapi.editor.Caret
-import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.editor.actionSystem.EditorActionHandler
-import com.intellij.openapi.editor.actionSystem.EditorActionManager
-import com.intellij.openapi.actionSystem.IdeActions
 import com.leandro.codexghosttext.preview.GhostPreviewService
+import java.awt.AWTEvent
+import java.awt.event.KeyEvent
 
-/** Application-scoped: action handlers are global, proposal state remains project scoped. */
+/** Captures proposal keys before IntelliJ keymaps and other completion plugins consume them. */
 @Service(Service.Level.APP)
 class GhostKeyHandlerInstaller : Disposable {
-    private val manager = EditorActionManager.getInstance()
-    private val tabOriginal = manager.getActionHandler(IdeActions.ACTION_EDITOR_TAB)
-    private val escapeOriginal = manager.getActionHandler(IdeActions.ACTION_EDITOR_ESCAPE)
-    private val tabWrapper = DelegatingHandler(tabOriginal) { editor -> consumeTab(editor) }
-    private val escapeWrapper = DelegatingHandler(escapeOriginal) { editor -> consumeEscape(editor) }
+    private val dispatcher = IdeEventQueue.EventDispatcher(::dispatch)
 
     init {
-        manager.setActionHandler(IdeActions.ACTION_EDITOR_TAB, tabWrapper)
-        manager.setActionHandler(IdeActions.ACTION_EDITOR_ESCAPE, escapeWrapper)
+        IdeEventQueue.getInstance().addPreprocessor(dispatcher, this)
     }
 
-    override fun dispose() {
-        if (manager.getActionHandler(IdeActions.ACTION_EDITOR_TAB) === tabWrapper) {
-            manager.setActionHandler(IdeActions.ACTION_EDITOR_TAB, tabOriginal)
-        }
-        if (manager.getActionHandler(IdeActions.ACTION_EDITOR_ESCAPE) === escapeWrapper) {
-            manager.setActionHandler(IdeActions.ACTION_EDITOR_ESCAPE, escapeOriginal)
-        }
-    }
-
-    private fun consumeTab(editor: Editor): Boolean {
-        val project = editor.project ?: return false
-        return project.getService(GhostPreviewService::class.java).acceptIfFresh(editor)
-    }
-
-    private fun consumeEscape(editor: Editor): Boolean {
+    private fun dispatch(event: AWTEvent): Boolean {
+        if (event !is KeyEvent || event.id != KeyEvent.KEY_PRESSED || event.isConsumed) return false
+        if (event.keyCode != KeyEvent.VK_TAB && event.keyCode != KeyEvent.VK_ESCAPE) return false
+        val editor = DataManager.getInstance().getDataContext(event.component)
+            .getData(CommonDataKeys.EDITOR) ?: return false
         val project = editor.project ?: return false
         val preview = project.getService(GhostPreviewService::class.java)
-        return preview.owns(editor) && preview.cancel()
+        val consumed = when (event.keyCode) {
+            KeyEvent.VK_TAB -> preview.acceptIfFresh(editor)
+            KeyEvent.VK_ESCAPE -> preview.owns(editor) && preview.cancel()
+            else -> false
+        }
+        if (consumed) event.consume()
+        return consumed
     }
 
-    private class DelegatingHandler(
-        private val original: EditorActionHandler,
-        private val consume: (Editor) -> Boolean,
-    ) : EditorActionHandler() {
-        override fun doExecute(editor: Editor, caret: Caret?, dataContext: DataContext) {
-            // Some editor actions invoke their handler without a specific Caret. A visible
-            // Codex proposal still owns Tab/Esc in that path; otherwise the normal Tab action
-            // indents the selected comment before the proposal can be accepted.
-            if (consume(editor)) return
-            original.execute(editor, caret, dataContext)
-        }
-    }
+    override fun dispose() = Unit
 }
