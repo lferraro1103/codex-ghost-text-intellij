@@ -14,10 +14,13 @@ class CodexGenerationService(private val project: Project) : Disposable {
     private val generating = AtomicBoolean(false)
     @Volatile private var active: Process? = null
 
+    fun cancel() { active?.destroyForcibly() }
+    fun isGenerating(): Boolean = generating.get()
+
     fun generate(comment: String, documentText: String, range: TextRange): GenerationResult {
         val executable = CodexExecutableLocator.find() ?: return GenerationResult.Failure("No encontré Codex local.")
         val basePath = project.basePath ?: return GenerationResult.Failure("El proyecto no tiene una carpeta disponible.")
-        if (!generating.compareAndSet(false, true)) return GenerationResult.Failure("Ya hay una generación en curso.")
+        if (!generating.compareAndSet(false, true)) return GenerationResult.Failure("La generación anterior se está cancelando.")
         var process: Process? = null
         try {
             process = ProcessBuilder(executable.toString(), "app-server", "--listen", "stdio://").apply {

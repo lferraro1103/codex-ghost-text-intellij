@@ -32,18 +32,28 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val editor = event.getData(CommonDataKeys.EDITOR)
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
+            project.getService(CodexGenerationService::class.java).cancel()
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
             val selectionStart = editor.selectionModel.selectionStart
             val selectionEnd = editor.selectionModel.selectionEnd
             ApplicationManager.getApplication().executeOnPooledThread {
-                val result = project.getService(CodexGenerationService::class.java)
+                val generation = project.getService(CodexGenerationService::class.java)
+                var waits = 0
+                while (generation.isGenerating() && waits++ < 50) {
+                    Thread.sleep(20)
+                }
+                val result = generation
                     .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp ||
                         editor.selectionModel.selectionStart != selectionStart || editor.selectionModel.selectionEnd != selectionEnd) return@invokeLater
                     when (result) {
-                        is GenerationResult.Success -> project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
+                        is GenerationResult.Success -> {
+                            val shown = project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
+                            if (!shown) NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
+                                .createNotification("No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING).notify(project)
+                        }
                         is GenerationResult.Failure -> NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
                             .createNotification(result.message, NotificationType.WARNING).notify(project)
                     }
