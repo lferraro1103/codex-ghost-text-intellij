@@ -57,12 +57,17 @@ class CodexAvailabilityServiceTest {
     }
 
     @Test
-    fun `rejects a server request because the diagnostic has no callback surface`() {
+    fun `skips a server request and continues to the correlated response`() {
         val reader = BufferedReader(
-            StringReader("""{"jsonrpc":"2.0","id":91,"method":"client/request","params":{}}"""),
+            StringReader(
+                """
+                {"jsonrpc":"2.0","id":91,"method":"client/request","params":{}}
+                {"jsonrpc":"2.0","id":2,"result":{}}
+                """.trimIndent(),
+            ),
         )
 
-        assertEquals(null, CodexProtocol.responseForId(reader, 2))
+        assertEquals("""{"jsonrpc":"2.0","id":2,"result":{}}""", CodexProtocol.responseForId(reader, 2))
     }
 
     @Test

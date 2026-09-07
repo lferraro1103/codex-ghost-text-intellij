@@ -30,13 +30,20 @@ class CodexGenerationService(private val project: Project) : Disposable {
             process.discardErrorOutput()
             process.outputStream.bufferedWriter().use { writer -> process.inputStream.bufferedReader().use { reader ->
                 writer.rpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.0\"}}")
-                if (CodexProtocol.responseForId(reader, 1) == null) return GenerationResult.Failure("No pude iniciar Codex local.")
+                val initialization = CodexProtocol.responseForId(reader, 1)
+                    ?: return GenerationResult.Failure("No pude iniciar Codex local.")
+                if (initialization.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó la inicialización local.")
                 writer.notification("initialized", "{}")
                 writer.rpc(2, "thread/start", "{\"cwd\":${basePath.json()},\"approvalPolicy\":\"never\",\"sandbox\":\"read-only\",\"config\":{\"web_search\":\"disabled\",\"features\":{\"plugins\":false}}}")
-                val thread = CodexProtocol.responseForId(reader, 2)?.threadId() ?: return GenerationResult.Failure("No pude crear una sesión de Codex.")
+                val threadResponse = CodexProtocol.responseForId(reader, 2)
+                    ?: return GenerationResult.Failure("No pude crear una sesión de Codex.")
+                if (threadResponse.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó crear la sesión.")
+                val thread = threadResponse.threadId() ?: return GenerationResult.Failure("Codex no devolvió una sesión válida.")
                 val prompt = """Generá SOLAMENTE el código que debe ir debajo de este comentario. No uses Markdown ni bloques de código. Podés inspeccionar el proyecto en modo lectura para entender clases relacionadas, pero nunca modifiques archivos.\n\nComentario seleccionado:\n$comment\n\nContexto cercano del archivo:\n${documentText.window(range)}"""
                 writer.rpc(3, "turn/start", "{\"threadId\":${thread.json()},\"approvalPolicy\":\"never\",\"input\":[{\"type\":\"text\",\"text\":${prompt.json()}}]}")
-                if (CodexProtocol.responseForId(reader, 3) == null) return GenerationResult.Failure("No pude iniciar la generación.")
+                val turnResponse = CodexProtocol.responseForId(reader, 3)
+                    ?: return GenerationResult.Failure("Codex no respondió al iniciar la generación.")
+                if (turnResponse.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó iniciar la generación.")
                 return collect(reader)
             }}
         } catch (_: Exception) { return GenerationResult.Failure("Falló la conexión local con Codex.")
@@ -77,4 +84,5 @@ internal fun String.threadId(): String? {
     val thread = indexOf("\"thread\"")
     return if (thread < 0) null else substring(thread).jsonField("id")
 }
+internal fun String.isJsonRpcError(): Boolean = contains("\"error\"") && !contains("\"result\"")
 private fun String.window(range: TextRange): String { val start=(range.startOffset-2000).coerceAtLeast(0); val end=(range.endOffset+4000).coerceAtMost(length); return substring(start,end) }
