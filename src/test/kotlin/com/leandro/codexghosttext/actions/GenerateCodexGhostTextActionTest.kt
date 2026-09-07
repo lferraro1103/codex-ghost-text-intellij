@@ -76,7 +76,7 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         notifications.forEach { it.expire() }
     }
 
-    fun testValidKeyboardInvocationShowsGeneratingFeedbackWithoutMutating() {
+    fun testValidKeyboardInvocationDoesNotShowABalloonOrMutate() {
         myFixture.configureByText("Sample.java", "// create user")
         myFixture.editor.selectionModel.setSelection(0, myFixture.editor.document.textLength)
         val notifications = mutableListOf<Notification>()
@@ -89,12 +89,8 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         assertTrue(event.presentation.isEnabled)
         val before = myFixture.editor.document.text
         action.actionPerformed(event)
-        assertSize(1, notifications)
-        assertEquals("Generando propuesta con Codex…", notifications.single().content)
-        assertEquals("Codex Ghost Text", notifications.single().groupId)
-        assertEquals(NotificationType.INFORMATION, notifications.single().type)
+        assertEmpty(notifications)
         assertEquals(before, myFixture.editor.document.text)
-        notifications.forEach { it.expire() }
     }
 
     fun testMissingEditorDisablesKeyboardActionAndHidesPopup() {
