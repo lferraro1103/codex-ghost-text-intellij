@@ -37,6 +37,9 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
             val snapshotStamp = editor.document.modificationStamp
             val selectionStart = editor.selectionModel.selectionStart
             val selectionEnd = editor.selectionModel.selectionEnd
+            val loadingNotification = NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
+                .createNotification("Generando propuesta con Codex…", NotificationType.INFORMATION)
+            loadingNotification.notify(project)
             ApplicationManager.getApplication().executeOnPooledThread {
                 val generation = project.getService(CodexGenerationService::class.java)
                 var waits = 0
@@ -46,6 +49,7 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 val result = generation
                     .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
                 ApplicationManager.getApplication().invokeLater {
+                    loadingNotification.expire()
                     if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp ||
                         editor.selectionModel.selectionStart != selectionStart || editor.selectionModel.selectionEnd != selectionEnd) return@invokeLater
                     when (result) {
