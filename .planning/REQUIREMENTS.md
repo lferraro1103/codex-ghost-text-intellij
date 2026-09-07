@@ -27,7 +27,7 @@
 
 ### Seguridad y calidad
 
-- [ ] **SAFE-01**: User's request sends bounded editor context and never enables tools, commands, autonomous file changes, or plugin-managed credentials.
+- [ ] **SAFE-01**: La solicitud envía contexto acotado y puede inspeccionar el proyecto mediante sandbox de sólo lectura; nunca aplica cambios autónomos, credenciales administradas por el plugin, web ni plugins por defecto.
 - [ ] **QUAL-01**: User can rely on the plugin alongside normal editor behavior, including read-only files, Undo, tab changes, and native completion states.
 
 ## v2 Requirements
@@ -49,7 +49,7 @@
 |---------|--------|
 | API key or OpenAI billing integration | The project intentionally uses the normal local Codex session. |
 | Backend, telemetry, cloud history, or custom account login | The plugin is personal and local-first. |
-| Autonomous agent edits, shell commands, or tool calls | Suggestions must remain reviewable and user-confirmed. |
+| Autonomous agent edits, escritura de archivos, web o plugins por defecto | Las sugerencias deben seguir siendo revisables; la inspección local de sólo lectura es necesaria para entender el proyecto. |
 | Continuous completion on every keystroke | Adds latency and quota pressure; deferred until the explicit selection workflow is proven. |
 | Replacing/deleting the selected comment | The comment remains as documentation of user intent. |
 

@@ -5,8 +5,8 @@ milestone_name: milestone
 current_phase: 3
 current_phase_name: Acceso local a Codex
 status: blocked
-stopped_at: Phase 4 context gathered; read-only project access approved
-last_updated: "2026-09-06T15:31:57.361Z"
+stopped_at: Phase 4 implemented; authenticated IntelliJ smoke test pending
+last_updated: "2026-09-07T15:22:06.388Z"
 last_activity: 2026-09-06
 last_activity_desc: Diagnóstico local seguro de Codex implementado; 25 tests y ZIP pasan. Verificador remoto diferido por TLS externo.
 progress:
@@ -98,6 +98,6 @@ User direction: "lo que te parezca conveniente, avanza fase por fase hasta termi
 
 ## Session Continuity
 
-Last session: 2026-09-06T15:31:57.349Z
-Stopped at: Phase 4 context gathered; read-only project access approved
-Resume file: .planning/phases/04-generaci-n-segura-y-convivencia-con-el-editor/04-CONTEXT.md
+Last session: 2026-09-07T15:22:06.357Z
+Stopped at: Phase 4 implemented; authenticated IntelliJ smoke test pending
+Resume file: .planning/phases/04-generaci-n-segura-y-convivencia-con-el-editor/04-VALIDATION.md

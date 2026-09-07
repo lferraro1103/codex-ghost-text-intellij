@@ -186,7 +186,7 @@ private fun BufferedWriter.jsonRpcNotification(method: String, params: String) {
     flush()
 }
 
-private fun Process.discardErrorOutput() {
+internal fun Process.discardErrorOutput() {
     Thread({
         errorStream.use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
