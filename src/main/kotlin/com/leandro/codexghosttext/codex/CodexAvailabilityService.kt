@@ -93,7 +93,6 @@ internal object CodexProtocol {
     private const val MAX_LINE_LENGTH = 64 * 1024
     private const val RESPONSE_TIMEOUT_MILLIS = 8_000L
     private val methodPattern = Regex("\\\"method\\\"\\s*:")
-    private val responseIdPattern = Regex("\\\"id\\\"\\s*:")
     private val accountTypePattern = Regex("\\\"type\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
     private val usedPercentPattern = Regex("\\\"usedPercent\\\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)")
 
@@ -109,14 +108,18 @@ internal object CodexProtocol {
 
             val line = reader.readLine() ?: return null
             if (line.length > MAX_LINE_LENGTH || !line.trimStart().startsWith("{")) return null
-            if (methodPattern.containsMatchIn(line)) {
-                // Notifications are expected between responses. A server request has an id and
-                // is rejected, because this diagnostic intentionally implements no callbacks.
-                if (responseIdPattern.containsMatchIn(line)) return null
-                continue
-            }
-            if (expectedId.containsMatchIn(line)) return line
-            if (!responseIdPattern.containsMatchIn(line)) return null
+
+            // The App Server is bidirectional. It can send notifications, or even a server
+            // request with its own id, while a client request is in flight. Those records are
+            // not the correlated JSON-RPC response we are waiting for.
+            if (expectedId.containsMatchIn(line) &&
+                !methodPattern.containsMatchIn(line) &&
+                (line.contains("\"result\"") || line.contains("\"error\""))
+            ) return line
+
+            // Every caller has a bounded timeout. With approvalPolicy=never and a read-only
+            // sandbox, no ignored callback can authorize a write.
+            continue
         }
         return null
     }

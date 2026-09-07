@@ -20,4 +20,10 @@ class CodexGenerationProtocolTest {
     fun `rejects a response without a thread`() {
         assertNull("""{"jsonrpc":"2.0","id":2,"result":{}}""".threadId())
     }
+
+    @Test
+    fun `recognizes an error response without treating a successful response as an error`() {
+        assertEquals(true, """{"jsonrpc":"2.0","id":3,"error":{"code":-32602}}""".isJsonRpcError())
+        assertEquals(false, """{"jsonrpc":"2.0","id":3,"result":{}}""".isJsonRpcError())
+    }
 }
