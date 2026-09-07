@@ -21,7 +21,7 @@ class GhostKeyHandlerInstaller : Disposable {
 
     private fun dispatch(event: AWTEvent): Boolean {
         if (event !is KeyEvent || event.id != KeyEvent.KEY_PRESSED || event.isConsumed) return false
-        if (event.keyCode != KeyEvent.VK_BACK_SLASH && event.keyCode != KeyEvent.VK_ESCAPE) return false
+        if (!isAcceptKey(event) && event.keyCode != KeyEvent.VK_ESCAPE) return false
         val dataContext = DataManager.getInstance().getDataContext(event.component)
         val preview = dataContext.getData(CommonDataKeys.PROJECT)
             ?.getService(GhostPreviewService::class.java)
@@ -31,14 +31,22 @@ class GhostKeyHandlerInstaller : Disposable {
                 .map { it.getService(GhostPreviewService::class.java) }
                 .firstOrNull { it.hasActivePreview() }
             ?: return false
-        val consumed = when (event.keyCode) {
-            KeyEvent.VK_BACK_SLASH -> preview.acceptActiveIfFresh()
-            KeyEvent.VK_ESCAPE -> preview.cancel()
+        val consumed = when {
+            isAcceptKey(event) -> {
+                preview.acceptActiveIfFresh()
+                // Do not let the key type into the editor even if a stale preview was rejected.
+                true
+            }
+            event.keyCode == KeyEvent.VK_ESCAPE -> preview.cancel()
             else -> false
         }
         if (consumed) event.consume()
         return consumed
     }
+
+    /** Supports the physical pipe key across common Spanish and US keyboard layouts. */
+    private fun isAcceptKey(event: KeyEvent): Boolean =
+        event.keyCode == KeyEvent.VK_BACK_SLASH || event.keyCode == KeyEvent.VK_BACK_QUOTE || event.keyChar == '|'
 
     override fun dispose() = Unit
 }
