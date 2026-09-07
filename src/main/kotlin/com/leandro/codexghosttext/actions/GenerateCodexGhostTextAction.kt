@@ -35,8 +35,6 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
             project.getService(CodexGenerationService::class.java).cancel()
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
-            val selectionStart = editor.selectionModel.selectionStart
-            val selectionEnd = editor.selectionModel.selectionEnd
             val loadingNotification = NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
                 .createNotification("Generando propuesta con Codex…", NotificationType.INFORMATION)
             loadingNotification.notify(project)
@@ -50,8 +48,9 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                     .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
                 ApplicationManager.getApplication().invokeLater {
                     loadingNotification.expire()
-                    if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp ||
-                        editor.selectionModel.selectionStart != selectionStart || editor.selectionModel.selectionEnd != selectionEnd) return@invokeLater
+                    // The selected comment is only input to the request. The user can navigate
+                    // elsewhere while Codex works; an edit still invalidates the snapshot.
+                    if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp) return@invokeLater
                     when (result) {
                         is GenerationResult.Success -> {
                             val shown = project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
