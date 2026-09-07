@@ -3,7 +3,7 @@ status: partial
 phase: 01-invocaci-n-sobre-comentario
 source: [01-PLAN.md]
 started: 2026-09-06T13:50:20Z
-updated: 2026-09-06T13:56:00Z
+updated: 2026-09-07T00:00:00Z
 ---
 
 ## Current Test
@@ -22,7 +22,7 @@ expected: Install build/distributions/codex-ghost-text-0.1.0.zip in IntelliJ 202
 result: [pending]
 
 ### 2. IntelliJ 2026.2 popup and assigned shortcut
-expected: Install the same ZIP in IntelliJ 2026.2 with its required runtime and repeat the full valid/invalid popup and assigned-shortcut matrix from test 1. No source changes, exception or lost focus. No ghost text is expected in Phase 1.
+expected: Install the same ZIP in IntelliJ 2026.2 with its required runtime and repeat the full valid/invalid popup and assigned-shortcut matrix from test 1. With a valid local Codex login, a valid selection must show a ghost proposal below the comment without changing the document; Tab inserts it as one Undo action and Esc discards it. Invalid selections must not start a request. No exception, lost focus or autonomous source change is allowed.
 result: [pending]
 
 ## Summary
@@ -36,4 +36,4 @@ blocked: 0
 
 ## Gaps
 
-No user-reported UI failures yet. These tests were absent from prior audit input, not passed. Automated action events and Plugin Verifier are not equivalent to interactive Keymap approval. The original Phase 1 Task 4 remains unapproved.
+No user-reported UI failures yet. These tests were absent from prior audit input, not passed. Automated action events and Plugin Verifier are not equivalent to interactive Keymap approval. Test 2 was updated after Phase 4 replaced the original local fixture with real generation.
