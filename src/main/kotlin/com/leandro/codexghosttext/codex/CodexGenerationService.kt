@@ -50,7 +50,8 @@ class CodexGenerationService(private val project: Project) : Disposable {
             when {
                 line.contains("\"method\":\"item/agentMessage/delta\"") -> line.jsonField("delta")?.let(text::append)
                 line.contains("\"type\":\"fileChange\"") || line.contains("\"method\":\"applyPatchApproval\"") -> return GenerationResult.Failure("Codex intentó modificar archivos; la propuesta fue cancelada.")
-                line.contains("\"method\":\"turn/completed\"") -> return proposal(text.toString())
+                line.contains("\"type\":\"mcpToolCall\"") || line.contains("\"type\":\"dynamicToolCall\"") || line.contains("\"type\":\"collabAgentToolCall\"") || line.contains("\"type\":\"webSearch\"") -> return GenerationResult.Failure("Codex intentó usar una herramienta no permitida; la propuesta fue cancelada.")
+                line.contains("\"method\":\"turn/completed\"") -> return if (line.contains("\"status\":\"completed\"")) proposal(text.toString()) else GenerationResult.Failure("Codex no pudo completar la generación.")
             }
         }
         return GenerationResult.Failure("Codex tardó demasiado en responder.")

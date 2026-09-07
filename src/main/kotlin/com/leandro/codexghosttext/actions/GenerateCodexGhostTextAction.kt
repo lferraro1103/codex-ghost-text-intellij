@@ -33,11 +33,15 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
             val snapshot = editor.document.text
+            val snapshotStamp = editor.document.modificationStamp
+            val selectionStart = editor.selectionModel.selectionStart
+            val selectionEnd = editor.selectionModel.selectionEnd
             ApplicationManager.getApplication().executeOnPooledThread {
                 val result = project.getService(CodexGenerationService::class.java)
                     .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
                 ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed || editor.isDisposed) return@invokeLater
+                    if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp ||
+                        editor.selectionModel.selectionStart != selectionStart || editor.selectionModel.selectionEnd != selectionEnd) return@invokeLater
                     when (result) {
                         is GenerationResult.Success -> project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
                         is GenerationResult.Failure -> NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
