@@ -58,7 +58,10 @@ class GhostKeyHandlerInstaller : Disposable {
         private val consume: (Editor) -> Boolean,
     ) : EditorActionHandler() {
         override fun doExecute(editor: Editor, caret: Caret?, dataContext: DataContext) {
-            if (caret != null && consume(editor)) return
+            // Some editor actions invoke their handler without a specific Caret. A visible
+            // Codex proposal still owns Tab/Esc in that path; otherwise the normal Tab action
+            // indents the selected comment before the proposal can be accepted.
+            if (consume(editor)) return
             original.execute(editor, caret, dataContext)
         }
     }
