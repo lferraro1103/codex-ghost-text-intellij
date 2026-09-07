@@ -29,7 +29,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
             active = process
             process.discardErrorOutput()
             process.outputStream.bufferedWriter().use { writer -> process.inputStream.bufferedReader().use { reader ->
-                writer.rpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.4\"}}")
+                writer.rpc(1, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.5\"}}")
                 val initialization = CodexProtocol.responseForId(reader, 1)
                     ?: return GenerationResult.Failure("No pude iniciar Codex local.")
                 if (initialization.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó la inicialización local.")
@@ -39,7 +39,20 @@ class CodexGenerationService(private val project: Project) : Disposable {
                     ?: return GenerationResult.Failure("No pude crear una sesión de Codex.")
                 if (threadResponse.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó crear la sesión.")
                 val thread = threadResponse.threadId() ?: return GenerationResult.Failure("Codex no devolvió una sesión válida.")
-                val prompt = """Generá SOLAMENTE el código que debe ir debajo de este comentario. No uses Markdown ni bloques de código. Podés inspeccionar el proyecto en modo lectura para entender clases relacionadas, pero nunca modifiques archivos.\n\nComentario seleccionado:\n$comment\n\nContexto cercano del archivo:\n${documentText.window(range)}"""
+                val prompt = """
+                    Generá únicamente el código nuevo que va inmediatamente debajo del comentario seleccionado.
+
+                    La primera respuesta visible debe comenzar directamente con código. No expliques qué vas a hacer,
+                    no describas pasos, no respondas al comentario en lenguaje natural y no uses Markdown ni cercos de código.
+                    Si no podés producir código insertable, respondé vacío. Podés inspeccionar el proyecto sólo si es
+                    imprescindible y en modo lectura; nunca modifiques archivos.
+
+                    Comentario seleccionado:
+                    $comment
+
+                    Contexto cercano del archivo:
+                    ${documentText.window(range)}
+                """.trimIndent()
                 writer.rpc(3, "turn/start", "{\"threadId\":${thread.json()},\"approvalPolicy\":\"never\",\"input\":[{\"type\":\"text\",\"text\":${prompt.json()}}]}")
                 val turnResponse = CodexProtocol.responseForId(reader, 3)
                     ?: return GenerationResult.Failure("Codex no respondió al iniciar la generación.")
@@ -68,7 +81,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
     }
 
     private fun proposal(raw: String): GenerationResult {
-        val code = raw.trim().removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()
+        val code = raw.codeOnlyProposal()
         return if (code.isBlank() || code.length > 16_000 || code.lines().size > 80) GenerationResult.Failure("Codex no devolvió una propuesta utilizable.") else GenerationResult.Success(code)
     }
     override fun dispose() { active?.destroyForcibly() }
@@ -85,4 +98,14 @@ internal fun String.threadId(): String? {
     return if (thread < 0) null else substring(thread).jsonField("id")
 }
 internal fun String.isJsonRpcError(): Boolean = contains("\"error\"") && !contains("\"result\"")
+internal fun String.codeOnlyProposal(): String {
+    val text = trim().removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()
+    val starts = listOf(
+        Regex("""(?m)^\s*(?=(?://|/\*|@\w|(?:public|private|protected|internal|fun|class|interface|object|data\s+class|sealed\s+class|enum\s+class|static|void|boolean|byte|short|int|long|float|double|char|String)\b))"""),
+        Regex("""\b(?:public|private|protected)\s+(?:(?:static|final|abstract|synchronized)\s+)*(?:void|boolean|byte|short|int|long|float|double|char|String|[A-Z]\w*(?:<[^\n>]+>)?)\s+\w+\s*\("""),
+        Regex("""(?m)^\s*(?=\w+(?:\.\w+)*\s*(?:=|\+\+|--))"""),
+    )
+    val start = starts.mapNotNull { it.find(text)?.range?.first }.minOrNull() ?: return ""
+    return text.substring(start).trim()
+}
 private fun String.window(range: TextRange): String { val start=(range.startOffset-2000).coerceAtLeast(0); val end=(range.endOffset+4000).coerceAtMost(length); return substring(start,end) }

@@ -5,6 +5,7 @@ import com.intellij.ide.IdeEventQueue
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.project.ProjectManager
 import com.leandro.codexghosttext.preview.GhostPreviewService
 import java.awt.AWTEvent
 import java.awt.event.KeyEvent
@@ -20,14 +21,19 @@ class GhostKeyHandlerInstaller : Disposable {
 
     private fun dispatch(event: AWTEvent): Boolean {
         if (event !is KeyEvent || event.id != KeyEvent.KEY_PRESSED || event.isConsumed) return false
-        if (event.keyCode != KeyEvent.VK_TAB && event.keyCode != KeyEvent.VK_ESCAPE) return false
-        val editor = DataManager.getInstance().getDataContext(event.component)
-            .getData(CommonDataKeys.EDITOR) ?: return false
-        val project = editor.project ?: return false
-        val preview = project.getService(GhostPreviewService::class.java)
+        if (event.keyCode != KeyEvent.VK_BACK_SLASH && event.keyCode != KeyEvent.VK_ESCAPE) return false
+        val dataContext = DataManager.getInstance().getDataContext(event.component)
+        val preview = dataContext.getData(CommonDataKeys.PROJECT)
+            ?.getService(GhostPreviewService::class.java)
+            ?.takeIf { it.hasActivePreview() }
+            ?: ProjectManager.getInstance().openProjects.asSequence()
+                .filterNot { it.isDisposed }
+                .map { it.getService(GhostPreviewService::class.java) }
+                .firstOrNull { it.hasActivePreview() }
+            ?: return false
         val consumed = when (event.keyCode) {
-            KeyEvent.VK_TAB -> preview.acceptIfFresh(editor)
-            KeyEvent.VK_ESCAPE -> preview.owns(editor) && preview.cancel()
+            KeyEvent.VK_BACK_SLASH -> preview.acceptActiveIfFresh()
+            KeyEvent.VK_ESCAPE -> preview.cancel()
             else -> false
         }
         if (consumed) event.consume()

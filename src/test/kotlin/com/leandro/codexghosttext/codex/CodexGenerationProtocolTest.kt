@@ -26,4 +26,15 @@ class CodexGenerationProtocolTest {
         assertEquals(true, """{"jsonrpc":"2.0","id":3,"error":{"code":-32602}}""".isJsonRpcError())
         assertEquals(false, """{"jsonrpc":"2.0","id":3,"result":{}}""".isJsonRpcError())
     }
+
+    @Test
+    fun `keeps code and removes a leading agent explanation`() {
+        val response = "Voy a revisar Nodo antes de implementarlo. public void sacarRaiz() {\n  raiz = null;\n}"
+        assertEquals("public void sacarRaiz() {\n  raiz = null;\n}", response.codeOnlyProposal())
+    }
+
+    @Test
+    fun `rejects a natural language response without code`() {
+        assertEquals("", "Voy a revisar la clase primero.".codeOnlyProposal())
+    }
 }

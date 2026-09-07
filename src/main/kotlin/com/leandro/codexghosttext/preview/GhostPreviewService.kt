@@ -70,6 +70,10 @@ class GhostPreviewService(private val project: Project) : Disposable {
         return true
     }
 
+    fun acceptActiveIfFresh(): Boolean = preview?.let { acceptIfFresh(it.editor) } ?: false
+
+    fun hasActivePreview(): Boolean = preview != null
+
     fun owns(editor: Editor): Boolean = preview?.editor === editor
 
     override fun dispose() { cancel() }
