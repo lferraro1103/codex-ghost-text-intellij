@@ -65,13 +65,13 @@ class ClaudeGenerationServiceTest {
             "{\"session_id\":\"claude-session-1\",\"session_id\":\"other\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\",\"extra\":true}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\"},\"tool_use\":true}",
-            success("fun x() = Unit".repeat(1_500)),
-        )
+            success("fun x() = Unit".repeat(1_500)).stdout,
+        ).map { ClaudeProcessResult(stdout = it, exitCode = 0) }
 
-        rejected.forEach { output ->
+        rejected.forEach { result ->
             val state = ClaudeProjectConversationState()
-            val result = ClaudeGenerationService(ScriptedClaudeRunner(ClaudeProcessResult(stdout = output)), state).generate(request())
-            assertTrue("Expected failure for $output", result is GenerationResult.Failure)
+            val proposal = ClaudeGenerationService(ScriptedClaudeRunner(result), state).generate(request())
+            assertTrue("Expected failure for ${result.stdout}", proposal is GenerationResult.Failure)
             assertNull(state.sessionFor("C:/workspace/arbol"))
         }
     }
@@ -122,6 +122,7 @@ class ClaudeGenerationServiceTest {
 
     private fun success(code: String, sessionId: String = "claude-session-1") = ClaudeProcessResult(
         stdout = "{\"session_id\":\"$sessionId\",\"structured_output\":{\"code\":${json(code)}}}",
+        exitCode = 0,
     )
 
     private fun json(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\n", "\\n").replace("\"", "\\\"") + "\""
@@ -137,7 +138,7 @@ private class ScriptedClaudeRunner(vararg results: ClaudeProcessResult) : Claude
 
     override fun run(profile: ClaudeCapabilityProfile, request: ClaudeProcessRequest): ClaudeProcessResult {
         requests += request
-        return scripted.removeFirstOrNull() ?: ClaudeProcessResult(diagnostic = ProviderDiagnostic.PROCESS_FAILED)
+        return if (scripted.isEmpty()) ClaudeProcessResult(diagnostic = ProviderDiagnostic.PROCESS_FAILED) else scripted.removeFirst()
     }
 
     override fun cancel() {
