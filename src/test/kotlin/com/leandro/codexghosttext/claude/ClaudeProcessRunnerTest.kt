@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Path
+import java.util.ArrayDeque
 
 class ClaudeProcessRunnerTest {
     @Test
@@ -32,5 +33,25 @@ class ClaudeProcessRunnerTest {
         runner.dispose()
 
         assertEquals(2, executor.cancelCalls)
+    }
+}
+
+internal class StaticClaudeExecutableLocator(private val executable: Path?) : ClaudeExecutableLocator {
+    override fun find(): Path? = executable
+}
+
+internal class RecordingClaudeCommandExecutor(vararg results: ClaudeCommandResult) : ClaudeCommandExecutor {
+    private val scriptedResults = ArrayDeque(results.toList())
+    val commands = mutableListOf<ClaudeCommand>()
+    var cancelCalls = 0
+        private set
+
+    override fun execute(command: ClaudeCommand): ClaudeCommandResult {
+        commands += command
+        return if (scriptedResults.isEmpty()) ClaudeCommandResult() else scriptedResults.removeFirst()
+    }
+
+    override fun cancel() {
+        cancelCalls += 1
     }
 }
