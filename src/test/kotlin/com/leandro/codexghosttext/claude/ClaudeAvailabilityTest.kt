@@ -35,14 +35,16 @@ class ClaudeAvailabilityTest {
     fun `keeps each unavailable capability failure actionable and never launches login`() {
         val executable = Path.of("C:/tools/claude.exe")
 
-        assertEquals(
-            ProviderDiagnostic.VERSION_UNSUPPORTED,
-            DefaultClaudeProcessRunner(
-                StaticClaudeExecutableLocator(executable),
-                RecordingClaudeCommandExecutor(ClaudeCommandResult(stdout = "2.1.258", exitCode = 0)),
-                Path.of("C:/plugin-neutral"),
-            ).probe().diagnostic,
+        val olderButCapable = DefaultClaudeProcessRunner(
+            StaticClaudeExecutableLocator(executable),
+            RecordingClaudeCommandExecutor(
+                ClaudeCommandResult(stdout = "2.1.258", exitCode = 0),
+                ClaudeCommandResult(stdout = ClaudeProcessRunner.requiredCapabilityFlags.joinToString(" "), exitCode = 0),
+                ClaudeCommandResult(stdout = "{\"loggedIn\":true}", exitCode = 0),
+            ),
+            Path.of("C:/plugin-neutral"),
         )
+        assertEquals(ProviderDiagnostic.READY, olderButCapable.probe().diagnostic)
         assertEquals(
             ProviderDiagnostic.VERSION_UNPARSEABLE,
             DefaultClaudeProcessRunner(

@@ -83,7 +83,7 @@ class MultiProviderWorkflowTest : LightJavaCodeInsightFixtureTestCase() {
         assertEquals(1, codex.generateCalls)
     }
 
-    fun testClaudeWorkflowUsesOnlyBoundedEditorPromptAndToolFreeNeutralProcess() {
+    fun testClaudeWorkflowUsesBoundedEditorPromptAndReadOnlyProjectProcess() {
         val projectRoot = "C:/very/private/intellij-project"
         val executor = RecordingClaudeCommandExecutor(
             ClaudeCommandResult(stdout = "2.1.259"),
@@ -125,10 +125,10 @@ class MultiProviderWorkflowTest : LightJavaCodeInsightFixtureTestCase() {
         assertTrue(prompt.contains("before-editor-context"))
         assertTrue(prompt.contains("after-editor-context"))
         assertFalse(prompt.contains(projectRoot, ignoreCase = true))
-        assertEquals("", command.arguments[command.arguments.indexOf("--tools") + 1])
-        assertEquals("none", command.arguments[command.arguments.indexOf("--permission-prompts") + 1])
-        assertTrue(command.arguments[command.arguments.indexOf("--disallowedTools") + 1].contains("Read"))
-        assertEquals(neutralDirectory, command.workingDirectory)
+        assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--allowedTools") + 1])
+        assertEquals("plan", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
+        assertTrue(command.arguments[command.arguments.indexOf("--disallowedTools") + 1].contains("Bash"))
+        assertEquals(Path.of(projectRoot), command.workingDirectory)
         assertFalse(command.arguments.any { it.contains(projectRoot, ignoreCase = true) })
     }
 

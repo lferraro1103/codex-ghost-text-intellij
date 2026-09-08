@@ -25,16 +25,18 @@ interface ClaudeProcessRunner {
     fun dispose()
 
     companion object {
-        const val minimumVersion = "2.1.259"
+        /**
+         * These flags are verified from the installed executable itself. A numeric release is
+         * deliberately not used as a proxy: Claude Code's packaging/versioning varies by channel.
+         */
         val requiredCapabilityFlags = setOf(
-            "--safe-mode",
+            "--print",
             "--output-format",
-            "--json-schema",
             "--allowedTools",
             "--disallowedTools",
             "--permission-mode",
-            "--permission-prompts",
             "--max-turns",
+            "--resume",
         )
     }
 }
@@ -306,11 +308,7 @@ internal class DefaultClaudeProcessRunner(
         val version = execute(executable, listOf("--version"))
         version.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
         if (version.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_COMMAND_FAILED)
-        when (parseVersion(version.stdout)) {
-            VersionCheck.OLD -> return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_UNSUPPORTED)
-            VersionCheck.UNPARSEABLE -> return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_UNPARSEABLE)
-            VersionCheck.SUPPORTED -> Unit
-        }
+        if (!hasParseableVersion(version.stdout)) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_UNPARSEABLE)
 
         val help = execute(executable, listOf("--help"))
         help.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
@@ -342,11 +340,8 @@ internal class DefaultClaudeProcessRunner(
             val arguments = buildList {
                 add("-p")
                 add(request.prompt)
-                add("--safe-mode")
                 add("--output-format")
                 add("json")
-                add("--json-schema")
-                add(CODE_ONLY_SCHEMA)
                 // Project context is read-only: no shell, edit, web, agent, or MCP capability.
                 add("--allowedTools")
                 add(READ_ONLY_TOOLS.joinToString(","))
@@ -354,9 +349,8 @@ internal class DefaultClaudeProcessRunner(
                 add("--disallowedTools")
                 add(DISALLOWED_TOOLS.joinToString(","))
                 add("--permission-mode")
-                add("dontAsk")
-                add("--permission-prompts")
-                add("none")
+                // Claude Code's documented plan mode permits inspection but blocks commands and edits.
+                add("plan")
                 add("--max-turns")
                 add("1")
                 request.resumeSessionId?.takeIf(String::isNotBlank)?.let { sessionId ->
@@ -422,20 +416,7 @@ internal class DefaultClaudeProcessRunner(
         else -> null
     }
 
-    private enum class VersionCheck { SUPPORTED, OLD, UNPARSEABLE }
-
-    private fun parseVersion(value: String): VersionCheck {
-        val match = VERSION_PATTERN.find(value) ?: return VersionCheck.UNPARSEABLE
-        val installed = match.groupValues.drop(1).map(String::toIntOrNull)
-        if (installed.any { it == null }) return VersionCheck.UNPARSEABLE
-        val minimum = listOf(2, 1, 259)
-        for (index in minimum.indices) {
-            val comparison = installed[index]!!.compareTo(minimum[index])
-            if (comparison > 0) return VersionCheck.SUPPORTED
-            if (comparison < 0) return VersionCheck.OLD
-        }
-        return VersionCheck.SUPPORTED
-    }
+    private fun hasParseableVersion(value: String): Boolean = VERSION_PATTERN.containsMatchIn(value)
 
     private fun String.authenticatedState(): Boolean? {
         val value = AUTH_BOOLEAN.find(this)?.groupValues?.get(1)?.toBooleanStrictOrNull()
@@ -478,8 +459,6 @@ internal class DefaultClaudeProcessRunner(
         private const val MAX_PROBE_OUTPUT_BYTES = 64 * 1024
         private const val MAX_STDOUT_BYTES = 128 * 1024
         private const val MAX_STDERR_BYTES = 32 * 1024
-        private const val CODE_ONLY_SCHEMA = "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"code\":{\"type\":\"string\"}},\"required\":[\"code\"]}"
-
         private fun defaultNeutralWorkingDirectory(): Path {
             val directory = Path.of(System.getProperty("java.io.tmpdir"), "codex-ghost-text", "claude")
             return runCatching { Files.createDirectories(directory) }.getOrElse { Path.of(System.getProperty("java.io.tmpdir")) }

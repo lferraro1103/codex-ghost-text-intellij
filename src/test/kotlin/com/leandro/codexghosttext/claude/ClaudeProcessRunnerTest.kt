@@ -63,7 +63,7 @@ class ClaudeProcessRunnerTest {
         assertEquals("-p", command.arguments[0])
         assertEquals("// crear método", command.arguments[1])
         assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--allowedTools") + 1])
-        assertEquals("none", command.arguments[command.arguments.indexOf("--permission-prompts") + 1])
+        assertEquals("plan", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
         assertEquals("1", command.arguments[command.arguments.indexOf("--max-turns") + 1])
         assertEquals("claude-session-1", command.arguments[command.arguments.indexOf("--resume") + 1])
         listOf("Bash", "Edit", "Write", "WebFetch", "WebSearch", "Agent", "NotebookEdit", "MCP", "Browser", "ProjectInspection", "mcp__*")

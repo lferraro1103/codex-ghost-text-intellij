@@ -14,6 +14,20 @@ import java.util.ArrayDeque
 
 class ClaudeGenerationServiceTest {
     @Test
+    fun `accepts code from Claude documented json print envelope`() {
+        val response = ClaudeProcessResult(
+            stdout = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"session_id\":\"claude-session-json\",\"result\":\"fun nueva() = Unit\"}",
+            exitCode = 0,
+        )
+        val state = ClaudeProjectConversationState()
+
+        val result = ClaudeGenerationService(ScriptedClaudeRunner(response), state).generate(request())
+
+        assertEquals(GenerationResult.Success("fun nueva() = Unit"), result)
+        assertEquals("claude-session-json", state.sessionFor("C:/workspace/arbol"))
+    }
+
+    @Test
     fun `returns only validated code and persists its Claude session for the same canonical root`() {
         val runner = ScriptedClaudeRunner(success("public void sacarRaiz() {\n  raiz = null;\n}"))
         val state = ClaudeProjectConversationState()

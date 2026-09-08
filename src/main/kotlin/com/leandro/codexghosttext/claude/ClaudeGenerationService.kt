@@ -117,18 +117,18 @@ class ClaudeGenerationService private constructor(
         fun parse(raw: String): ParsedProposal {
             val root = runCatching { StrictJsonReader(raw).read() }.getOrNull() as? JsonValue.ObjectValue
                 ?: return ParsedProposal.Failure("Claude no devolvió una respuesta estructurada válida.")
-            if (root.values.keys != setOf("session_id", "structured_output")) {
-                return ParsedProposal.Failure("Claude devolvió campos no permitidos.")
-            }
             val sessionId = (root.values["session_id"] as? JsonValue.StringValue)?.value
                 ?.takeIf { SESSION_ID.matches(it) }
                 ?: return ParsedProposal.Failure("Claude no devolvió una sesión válida.")
             val structured = root.values["structured_output"] as? JsonValue.ObjectValue
-                ?: return ParsedProposal.Failure("Claude no devolvió código estructurado.")
-            if (structured.values.keys != setOf("code")) {
-                return ParsedProposal.Failure("Claude devolvió una estructura de código no permitida.")
+            if (structured != null && root.values.keys != setOf("session_id", "structured_output")) {
+                return ParsedProposal.Failure("Claude devolvió campos no permitidos.")
             }
-            val code = (structured.values["code"] as? JsonValue.StringValue)?.value
+            if ((root.values["is_error"] as? JsonValue.LiteralValue)?.value == "true") {
+                return ParsedProposal.Failure("Claude informó un error al generar el código.")
+            }
+            val code = (structured?.values?.takeIf { it.keys == setOf("code") }?.get("code") as? JsonValue.StringValue)?.value
+                ?: (root.values["result"] as? JsonValue.StringValue)?.value
                 ?: return ParsedProposal.Failure("Claude no devolvió código estructurado.")
             if (!code.isCodeOnlyProposal()) return ParsedProposal.Failure("Claude no devolvió una propuesta de código utilizable.")
             return ParsedProposal.Success(code, sessionId)
