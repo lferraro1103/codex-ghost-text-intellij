@@ -41,9 +41,9 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
     fun testActionIsRegisteredWithStableId() {
         val action = ActionManager.getInstance().getAction(ACTION_ID)
         assertNotNull(action)
-        assertEquals("Generate Codex Ghost Text", action.templatePresentation.text)
+        assertEquals("Generate AI Ghost Text", action.templatePresentation.text)
         assertEquals(
-            "Generate a Codex code proposal from the selected comment",
+            "Generate an AI code proposal from the selected comment",
             action.templatePresentation.description,
         )
     }
