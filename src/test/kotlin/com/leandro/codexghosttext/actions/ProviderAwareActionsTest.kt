@@ -7,6 +7,7 @@ import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import com.leandro.codexghosttext.provider.ProviderProjectState
 import com.leandro.codexghosttext.provider.ProviderRouterService
+import com.leandro.codexghosttext.provider.SelectedProviderAvailability
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

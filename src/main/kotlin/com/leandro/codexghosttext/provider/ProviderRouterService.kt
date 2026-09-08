@@ -12,6 +12,12 @@ import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import com.leandro.codexghosttext.preview.GhostPreviewService
 
+/** A diagnostic paired with the provider that was selected when it was checked. */
+data class SelectedProviderAvailability(
+    val providerId: ProviderId,
+    val diagnostic: ProviderDiagnostic,
+)
+
 /** Immutable routing token; it intentionally carries no provider conversation or session identifier. */
 data class ProviderSelectionSnapshot(
     val providerId: ProviderId,
@@ -70,7 +76,17 @@ class ProviderRouterService private constructor(
         snapshot.epoch == epoch && snapshot.providerId == state.selectedProvider() && snapshot.provider === providerFor(snapshot.providerId)
     }
 
-    fun checkAvailability(): ProviderDiagnostic = snapshot().provider.checkAvailability()
+    /**
+     * Checks exactly one captured selection. The returned provider id makes it impossible for UI
+     * feedback to accidentally describe a provider selected after the probe began.
+     */
+    fun checkSelectedAvailability(): SelectedProviderAvailability {
+        val selected = snapshot()
+        return SelectedProviderAvailability(selected.providerId, selected.provider.checkAvailability())
+    }
+
+    /** Kept for internal callers that only need the provider-neutral diagnostic value. */
+    fun checkAvailability(): ProviderDiagnostic = checkSelectedAvailability().diagnostic
 
     fun generate(request: GenerationRequest, snapshot: ProviderSelectionSnapshot = snapshot()): GenerationResult =
         snapshot.provider.generate(request)
@@ -79,8 +95,16 @@ class ProviderRouterService private constructor(
         snapshot().provider.cancel()
     }
 
-    fun resetSelectedConversation() {
-        snapshot().provider.resetConversation()
+    /**
+     * Captures the current provider before touching local state, then affects no other provider.
+     * The provider owns its session store; the router owns preview dismissal for this action path.
+     */
+    fun resetSelectedConversation(): ProviderId {
+        val selected = snapshot()
+        selected.provider.cancel()
+        selected.provider.resetConversation()
+        cancelPreview()
+        return selected.providerId
     }
 
     /** @return true when a different provider was actually selected. */
