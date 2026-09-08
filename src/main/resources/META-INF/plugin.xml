@@ -11,7 +11,7 @@
     <applicationService serviceImplementation="com.leandro.codexghosttext.editor.GhostKeyHandlerInstaller" />
     <typedHandler implementation="com.leandro.codexghosttext.editor.CodexGhostTypedHandler" />
     <statusBarWidgetFactory id="CodexGhostText.ProviderSelector"
-                            factoryClass="com.leandro.codexghosttext.status.ProviderSelectorWidgetFactory" />
+                            implementation="com.leandro.codexghosttext.status.ProviderSelectorWidgetFactory" />
   </extensions>
 
   <actions>

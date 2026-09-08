@@ -8,11 +8,16 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.application.ApplicationManager
-import com.leandro.codexghosttext.selection.SelectedCommentResolver
-import com.leandro.codexghosttext.preview.GhostPreviewService
-import com.leandro.codexghosttext.codex.CodexGenerationService
+import com.intellij.openapi.components.Service
+import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.preview.GhostPreviewService
+import com.leandro.codexghosttext.provider.ProviderRouterService
+import com.leandro.codexghosttext.provider.ProviderSelectionSnapshot
+import com.leandro.codexghosttext.selection.SelectedCommentResolver
 import com.leandro.codexghosttext.status.CodexGenerationStatusService
+import java.io.File
+import java.util.concurrent.atomic.AtomicLong
 
 class GenerateCodexGhostTextAction : DumbAwareAction() {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -33,24 +38,35 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val editor = event.getData(CommonDataKeys.EDITOR)
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
-            project.getService(CodexGenerationService::class.java).cancel()
+            val router = project.getService(ProviderRouterService::class.java)
+            val selectedProvider = router.snapshot()
+            val dispatch = project.getService(ActionGenerationRequestTracker::class.java)
+                .capture(selectedProvider) { router.isCurrent(selectedProvider) }
+            // A proposal is independent from a request. Remove an old inlay before starting one
+            // selected provider request, but never write the document from this action.
+            project.getService(GhostPreviewService::class.java).cancel()
+            selectedProvider.provider.cancel()
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
             val generationStatus = project.getService(CodexGenerationStatusService::class.java)
-            val request = generationStatus.show()
+            val statusRequest = generationStatus.show(selectedProvider.providerId)
+            val request = GenerationRequest(
+                comment = snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset),
+                documentText = snapshot,
+                range = selectedComment.range,
+                // This key is provider state metadata only. Claude's process/prompt must never see it.
+                projectRoot = project.basePath?.let { runCatching { File(it).canonicalPath }.getOrDefault(it) } ?: project.locationHash,
+            )
             ApplicationManager.getApplication().executeOnPooledThread {
-                val generation = project.getService(CodexGenerationService::class.java)
-                var waits = 0
-                while (generation.isGenerating() && waits++ < 50) {
-                    Thread.sleep(20)
-                }
-                val result = generation
-                    .generate(snapshot.substring(selectedComment.range.startOffset, selectedComment.range.endOffset), snapshot, selectedComment.range)
+                val result = runCatching { dispatch.generate(request) }
+                    .getOrElse { GenerationResult.Failure("Falló la generación local.") }
                 ApplicationManager.getApplication().invokeLater {
-                    generationStatus.hide(request)
+                    generationStatus.hide(statusRequest)
                     // The selected comment is only input to the request. The user can navigate
-                    // elsewhere while Codex works; an edit still invalidates the snapshot.
-                    if (project.isDisposed || editor.isDisposed || editor.document.modificationStamp != snapshotStamp) return@invokeLater
+                    // elsewhere while a provider works; an edit or provider switch invalidates it.
+                    if (!dispatch.isCurrent() || project.isDisposed || editor.isDisposed ||
+                        editor.document.modificationStamp != snapshotStamp
+                    ) return@invokeLater
                     when (result) {
                         is GenerationResult.Success -> {
                             val shown = project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
@@ -76,5 +92,47 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         const val ACTION_ID = "com.leandro.codexghosttext.GenerateCodexGhostText"
         const val NOTIFICATION_GROUP_ID = "Codex Ghost Text"
         const val INVALID_SELECTION_MESSAGE = "Seleccioná exactamente un comentario para generar código."
+    }
+}
+
+/**
+ * Project-local latest-request guard. Provider epochs prevent cross-provider stale delivery;
+ * this token also prevents an older request of the *same* provider from publishing afterwards.
+ */
+@Service(Service.Level.PROJECT)
+internal class ActionGenerationRequestTracker {
+    private val latestToken = AtomicLong(0)
+
+    fun capture(
+        snapshot: ProviderSelectionSnapshot,
+        providerIsCurrent: () -> Boolean,
+    ): CapturedProviderGeneration = CapturedProviderGeneration(
+        snapshot = snapshot,
+        token = latestToken.incrementAndGet(),
+        tokenIsCurrent = { token -> latestToken.get() == token },
+        providerIsCurrent = providerIsCurrent,
+    )
+}
+
+/** One explicit provider invocation; it has no knowledge of any alternative provider. */
+internal class CapturedProviderGeneration(
+    private val snapshot: ProviderSelectionSnapshot,
+    private val token: Long,
+    private val tokenIsCurrent: (Long) -> Boolean,
+    private val providerIsCurrent: () -> Boolean,
+) {
+    fun generate(request: GenerationRequest): GenerationResult {
+        if (!isCurrent()) return GenerationResult.Failure(CANCELLED_MESSAGE)
+        var waits = 0
+        while (snapshot.provider.isGenerating() && waits++ < WAIT_ATTEMPTS) Thread.sleep(WAIT_MILLIS)
+        return if (isCurrent()) snapshot.provider.generate(request) else GenerationResult.Failure(CANCELLED_MESSAGE)
+    }
+
+    fun isCurrent(): Boolean = tokenIsCurrent(token) && providerIsCurrent()
+
+    private companion object {
+        const val WAIT_ATTEMPTS = 50
+        const val WAIT_MILLIS = 20L
+        const val CANCELLED_MESSAGE = "La generación fue cancelada."
     }
 }
