@@ -14,8 +14,9 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 - Multi-line translucent green preview, aligned to the comment indentation.
 - Accept with `|`; dismiss with `Esc`.
 - The document changes only after explicit acceptance.
-- One Codex chat per IntelliJ project, reused across requests and after reopening the project.
-- **Tools → Reset Codex Conversation for This Project** opens a fresh chat for that project only.
+- Choose **Codex** or **Claude** from a persistent project-local selector in the status bar.
+- One chat per provider and IntelliJ project, reused across requests and after reopening the project.
+- **Tools → Reset Provider Conversation for This Project** is the only way to deliberately open a fresh chat for that provider.
 - Responses are filtered to insertable code only, without explanations or Markdown fences.
 
 ### Requirements
@@ -37,7 +38,7 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 3. Wait for the status-bar generation indicator and review the green block.
 4. Press `|` to insert the code or `Esc` to discard it.
 
-The plugin associates a Codex chat with the project folder. Later requests reuse that conversation and Codex may read classes from the project when needed; the whole repository is not sent on every request. Use **Tools → Reset Codex Conversation for This Project** to discard the context and start a new chat.
+The plugin associates an independent Codex or Claude chat with the project folder. Later requests reuse that provider's conversation and may read classes from the project when needed; the whole repository is not sent on every request. A failed resume never silently creates another chat. Use **Tools → Reset Provider Conversation for This Project** to deliberately discard one provider's context and start a new chat.
 
 The `|` shortcut is handled in the editor typing pipeline before it can be written, so accepting a proposal neither inserts `|` nor invalidates the preview.
 
@@ -55,7 +56,7 @@ It reuses the Codex CLI login, normally configured with `codex login`. As an add
 
 ### Privacy and safety
 
-Codex receives the project folder as its working directory (`cwd`). Each request adds only the selected comment plus nearby file context: up to 2,000 preceding and 4,000 following characters.
+Codex and Claude receive the project folder as their working directory. Each request adds only the selected comment plus nearby file context: up to 2,000 preceding and 4,000 following characters. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
 
 The session uses a read-only sandbox, `never` approval, disabled web search, and disabled plugins/tools. A proposal is cancelled if Codex attempts to modify a file or use a tool. The plugin never applies changes automatically and discards a response when its preview closes.
 
@@ -103,8 +104,9 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 - Vista previa multilínea verde y translúcida, alineada con la sangría del comentario.
 - Aceptación con `|`; cancelación con `Esc`.
 - El documento sólo cambia después de aceptar explícitamente.
-- Un chat de Codex por proyecto de IntelliJ, reutilizado entre consultas y al reabrirlo.
-- **Tools → Reset Codex Conversation for This Project** abre un chat nuevo sólo para ese proyecto.
+- Elegí **Codex** o **Claude** desde un selector persistente y local al proyecto en la barra de estado.
+- Un chat por proveedor y proyecto de IntelliJ, reutilizado entre consultas y al reabrirlo.
+- **Tools → Reset Provider Conversation for This Project** es la única forma de abrir deliberadamente un chat nuevo para ese proveedor.
 - Las respuestas se filtran para aceptar únicamente código insertable, sin explicaciones ni bloques Markdown.
 
 ### Requisitos
@@ -126,7 +128,7 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 3. Esperá el indicador de la barra de estado y revisá el bloque verde.
 4. Presioná `|` para insertar el código o `Esc` para descartarlo.
 
-El plugin asocia un chat de Codex a la carpeta del proyecto. Las consultas posteriores reutilizan esa conversación y Codex puede leer clases del proyecto cuando haga falta; no se envía todo el repositorio con cada pedido. Usá **Tools → Reset Codex Conversation for This Project** para descartar el contexto e iniciar un chat nuevo.
+El plugin asocia chats independientes de Codex o Claude a la carpeta del proyecto. Las consultas posteriores reutilizan la conversación del proveedor elegido y pueden leer clases del proyecto cuando haga falta; no se envía todo el repositorio con cada pedido. Si no se puede reanudar una sesión, nunca se crea otro chat a escondidas. Usá **Tools → Reset Provider Conversation for This Project** para descartar deliberadamente el contexto de un proveedor e iniciar un chat nuevo.
 
 El atajo `|` se procesa en la tubería de tipeo del editor antes de que pueda escribirse. Por eso aceptar una propuesta no inserta `|` ni invalida la vista previa.
 
@@ -144,7 +146,7 @@ Reutiliza el inicio de sesión de Codex CLI, normalmente configurado con `codex 
 
 ### Privacidad y seguridad
 
-Codex recibe la carpeta del proyecto como directorio de trabajo (`cwd`). Cada solicitud agrega sólo el comentario seleccionado y contexto cercano: hasta 2,000 caracteres anteriores y 4,000 posteriores.
+Codex y Claude reciben la carpeta del proyecto como directorio de trabajo. Cada solicitud agrega sólo el comentario seleccionado y contexto cercano: hasta 2,000 caracteres anteriores y 4,000 posteriores. Claude puede consultar archivos del proyecto únicamente mediante `Read`, `Glob` y `Grep`; no puede ejecutar comandos, editar archivos, navegar la web, usar agentes ni MCP/plugins.
 
 La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desactivada y plugins/herramientas desactivados. La propuesta se cancela si Codex intenta modificar un archivo o utilizar una herramienta. El plugin nunca aplica cambios automáticamente y descarta la respuesta cuando se cierra la vista previa.
 

@@ -38,7 +38,7 @@ class CodexConversationReusePolicyTest {
     }
 
     @Test
-    fun `falls back to one new chat only when the saved chat cannot be resumed`() {
+    fun `never creates a replacement chat when the saved chat cannot be resumed`() {
         val policy = CodexConversationReusePolicy()
         val calls = mutableListOf<String>()
 
@@ -49,8 +49,8 @@ class CodexConversationReusePolicyTest {
             start = { calls += "thread/start"; "thread_replacement" },
         )
 
-        assertEquals("thread_replacement", thread)
-        assertEquals(listOf("thread/resume:thread_expired", "thread/start"), calls)
+        assertNull(thread)
+        assertEquals(listOf("thread/resume:thread_expired"), calls)
     }
 
     @Test

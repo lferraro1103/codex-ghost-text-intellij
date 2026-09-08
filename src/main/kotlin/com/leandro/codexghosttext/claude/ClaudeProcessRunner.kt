@@ -30,7 +30,7 @@ interface ClaudeProcessRunner {
             "--safe-mode",
             "--output-format",
             "--json-schema",
-            "--tools",
+            "--allowedTools",
             "--disallowedTools",
             "--permission-mode",
             "--permission-prompts",
@@ -49,10 +49,11 @@ data class ClaudeCapabilityProfile(
             supportedFlags.containsAll(ClaudeProcessRunner.requiredCapabilityFlags)
 }
 
-/** Prompt and opaque Claude-only session id. Project identity never crosses this boundary. */
+/** Prompt, opaque Claude-only session id, and the project directory available read-only. */
 data class ClaudeProcessRequest(
     val prompt: String,
     val resumeSessionId: String?,
+    val projectRoot: Path,
 )
 
 data class ClaudeProcessResult(
@@ -260,9 +261,9 @@ internal class DefaultClaudeProcessRunner(
                 add("json")
                 add("--json-schema")
                 add(CODE_ONLY_SCHEMA)
-                // An empty allow-list is the primary D-01 capability boundary.
-                add("--tools")
-                add("")
+                // Project context is read-only: no shell, edit, web, agent, or MCP capability.
+                add("--allowedTools")
+                add(READ_ONLY_TOOLS.joinToString(","))
                 // Explicit denials protect against a CLI capability-default regression.
                 add("--disallowedTools")
                 add(DISALLOWED_TOOLS.joinToString(","))
@@ -282,7 +283,7 @@ internal class DefaultClaudeProcessRunner(
                     executable = requireNotNull(profile.executable),
                     arguments = arguments,
                     environmentRemovals = credentialEnvironmentNames,
-                    workingDirectory = neutralWorkingDirectory,
+                    workingDirectory = request.projectRoot,
                     timeoutMillis = GENERATION_TIMEOUT_MILLIS,
                     stdoutLimitBytes = MAX_STDOUT_BYTES,
                     stderrLimitBytes = MAX_STDERR_BYTES,
@@ -368,12 +369,11 @@ internal class DefaultClaudeProcessRunner(
             "ANTHROPIC_AUTH_TOKEN",
             "CLAUDE_CODE_OAUTH_TOKEN",
         )
+        private val READ_ONLY_TOOLS = listOf("Read", "Glob", "Grep")
         private val DISALLOWED_TOOLS = listOf(
-            "Read",
-            "Glob",
-            "Grep",
             "Bash",
             "Edit",
+            "Write",
             "WebFetch",
             "WebSearch",
             "Agent",

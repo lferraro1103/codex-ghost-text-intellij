@@ -11,8 +11,8 @@ enum class ProviderId {
 /**
  * Immutable editor data passed to a locally selected provider.
  *
- * [projectRoot] is plugin metadata used only for provider-specific state routing. It is not
- * prompt material and Claude must never use it as a process working directory.
+ * [projectRoot] is not prompt material. Providers use it to attach their reusable project
+ * conversation to the IntelliJ project's directory under their respective read-only policies.
  */
 data class GenerationRequest(
     val comment: String,

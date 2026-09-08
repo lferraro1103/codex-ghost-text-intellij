@@ -10,11 +10,12 @@ import com.leandro.codexghosttext.generation.LocalGenerationProvider
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import java.lang.StringBuilder
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Claude's one-shot CLI provider. It deliberately receives editor values only, never a document,
- * a project directory, or a tool-capable process request.
+ * Claude's project-scoped CLI provider. It receives the IntelliJ project's root as its working
+ * directory and may inspect source files with explicitly allow-listed read-only tools.
  */
 @Service(Service.Level.PROJECT)
 class ClaudeGenerationService private constructor(
@@ -46,25 +47,15 @@ class ClaudeGenerationService private constructor(
 
             val prompt = buildPrompt(request.comment, request.documentText, request.range)
             val savedSession = conversationState.sessionFor(request.projectRoot)
-            val first = generateOnce(profile, prompt, savedSession)
+            val first = generateOnce(profile, prompt, savedSession, request.projectRoot)
             if (first is ParsedProposal.Success) {
                 conversationState.remember(request.projectRoot, first.sessionId)
                 return GenerationResult.Success(first.code)
             }
 
-            if (savedSession != null) {
-                // A resume id is useful only if its entire invocation and envelope were valid.
-                conversationState.forget()
-                if (!(first as ParsedProposal.Failure).mayRetryFresh) {
-                    return GenerationResult.Failure(first.message)
-                }
-                val fresh = generateOnce(profile, prompt, null)
-                if (fresh is ParsedProposal.Success) {
-                    conversationState.remember(request.projectRoot, fresh.sessionId)
-                    return GenerationResult.Success(fresh.code)
-                }
-                return GenerationResult.Failure((fresh as ParsedProposal.Failure).message)
-            }
+            if (savedSession != null) return GenerationResult.Failure(
+                "No pude reanudar la conversación de Claude de este proyecto. Usá ‘Reiniciar conversación del proveedor’ solo si querés crear una nueva.",
+            )
             return GenerationResult.Failure((first as ParsedProposal.Failure).message)
         } finally {
             generating.set(false)
@@ -87,8 +78,11 @@ class ClaudeGenerationService private constructor(
         profile: ClaudeCapabilityProfile,
         prompt: String,
         sessionId: String?,
+        projectRoot: String,
     ): ParsedProposal {
-        val result = processRunner.run(profile, ClaudeProcessRequest(prompt, sessionId))
+        val workingDirectory = runCatching { Path.of(projectRoot) }.getOrNull()
+            ?: return ParsedProposal.Failure("El proyecto no tiene una carpeta válida para Claude.")
+        val result = processRunner.run(profile, ClaudeProcessRequest(prompt, sessionId, workingDirectory))
         result.diagnostic?.let {
             return ParsedProposal.Failure(it.userMessage, mayRetryFresh = it == ProviderDiagnostic.PROCESS_FAILED)
         }
@@ -99,7 +93,9 @@ class ClaudeGenerationService private constructor(
     }
 
     private fun buildPrompt(comment: String, documentText: String, range: TextRange): String = """
-        Devolvé únicamente código nuevo, sin explicación ni Markdown.
+        Devolvé únicamente código nuevo, sin explicación ni Markdown. Podés consultar los
+        archivos del proyecto actual solo con herramientas de lectura si ese contexto es necesario.
+        No ejecutes comandos, no navegues la web y no modifiques archivos.
 
         Comentario seleccionado:
         $comment

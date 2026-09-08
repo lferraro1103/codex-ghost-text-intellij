@@ -16,7 +16,11 @@ internal class CodexConversationReusePolicy {
         resume: (String) -> String?,
         start: () -> String?,
     ): String? {
-        val threadId = persistedThreadId?.let(resume) ?: start() ?: return null
+        // A saved project chat is authoritative. Never silently replace it with a new chat:
+        // doing so fragments the user's provider history and loses the project context.
+        // The explicit Reset action is the only route allowed to create a replacement.
+        val savedThreadId = persistedThreadId
+        val threadId = (if (savedThreadId != null) resume(savedThreadId) else start()) ?: return null
         active = ActiveConversation(projectRoot, threadId)
         return threadId
     }

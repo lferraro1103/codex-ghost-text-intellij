@@ -19,7 +19,7 @@ class ClaudeProcessRunnerTest {
         )
         val runner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(executable), executor, Path.of("C:/plugin-neutral"))
 
-        val result = runner.run(runner.probe(), ClaudeProcessRequest("generar codigo", null))
+        val result = runner.run(runner.probe(), ClaudeProcessRequest("generar codigo", null, Path.of("C:/project")))
 
         assertEquals(ProviderDiagnostic.UNSAFE_CAPABILITIES, result.diagnostic)
         assertEquals(2, executor.commands.size)
@@ -37,7 +37,7 @@ class ClaudeProcessRunnerTest {
     }
 
     @Test
-    fun `generation command has an empty tool surface and never exposes a project path`() {
+    fun `generation command exposes only project read tools in the requested project root`() {
         val projectRoot = "C:/work/private-project"
         val executor = RecordingClaudeCommandExecutor(
             ClaudeCommandResult(stdout = "2.1.259"),
@@ -47,23 +47,23 @@ class ClaudeProcessRunnerTest {
         )
         val runner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(Path.of("C:/tools/claude.exe")), executor, Path.of("C:/plugin-neutral"))
 
-        val result = runner.run(runner.probe(), ClaudeProcessRequest("// crear método", "claude-session-1"))
+        val result = runner.run(runner.probe(), ClaudeProcessRequest("// crear método", "claude-session-1", Path.of(projectRoot)))
 
         assertNull(result.diagnostic)
         val command = executor.commands.last()
         assertEquals("-p", command.arguments[0])
         assertEquals("// crear método", command.arguments[1])
-        assertEquals("", command.arguments[command.arguments.indexOf("--tools") + 1])
+        assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--allowedTools") + 1])
         assertEquals("none", command.arguments[command.arguments.indexOf("--permission-prompts") + 1])
         assertEquals("1", command.arguments[command.arguments.indexOf("--max-turns") + 1])
         assertEquals("claude-session-1", command.arguments[command.arguments.indexOf("--resume") + 1])
-        listOf("Read", "Glob", "Grep", "Bash", "Edit", "WebFetch", "WebSearch", "Agent", "NotebookEdit", "MCP", "Browser", "ProjectInspection", "mcp__*")
+        listOf("Bash", "Edit", "Write", "WebFetch", "WebSearch", "Agent", "NotebookEdit", "MCP", "Browser", "ProjectInspection", "mcp__*")
             .forEach { denied -> assertTrue(command.arguments[command.arguments.indexOf("--disallowedTools") + 1].contains(denied)) }
         assertFalse(command.arguments.any { it.contains(projectRoot, ignoreCase = true) })
         assertFalse(command.arguments.filter { it.startsWith("--") }.any {
             it == "--add-dir" || it == "--continue" || it.contains("plugin", ignoreCase = true) || it.contains("browser", ignoreCase = true)
         })
-        assertEquals(Path.of("C:/plugin-neutral"), command.workingDirectory)
+        assertEquals(Path.of(projectRoot), command.workingDirectory)
         assertEquals(DefaultClaudeProcessRunner.credentialEnvironmentNames, command.environmentRemovals)
         assertTrue(command.timeoutMillis > 0)
         assertTrue(command.stdoutLimitBytes > 0)
@@ -97,7 +97,7 @@ class ClaudeProcessRunnerTest {
         val runner: ClaudeProcessRunner,
         val profile: ClaudeCapabilityProfile,
     ) {
-        fun run(): ClaudeProcessResult = runner.run(profile, ClaudeProcessRequest("// generar", null))
+        fun run(): ClaudeProcessResult = runner.run(profile, ClaudeProcessRequest("// generar", null, Path.of("C:/project")))
     }
 }
 

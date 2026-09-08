@@ -109,6 +109,9 @@ class CodexGenerationService(private val project: Project) : Disposable {
         closeSessionLocked()
         val process = runCatching {
             ProcessBuilder(executable, "app-server", "--listen", "stdio://").apply {
+                // The app-server and its thread both start in this IntelliJ project's root.
+                // This gives Codex project context without embedding the whole project in a prompt.
+                directory(File(projectRoot))
                 environment().remove("CODEX_API_KEY")
                 environment().remove("OPENAI_API_KEY")
                 environment().remove("CODEX_ACCESS_TOKEN")
@@ -122,7 +125,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
         activeProjectRoot = projectRoot
         process.discardErrorOutput()
 
-        val initialized = request(writer, reader, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.1.8\"}}")
+        val initialized = request(writer, reader, "initialize", "{\"clientInfo\":{\"name\":\"codex-ghost-text\",\"version\":\"0.2.2\"}}")
         if (initialized == null || initialized.isJsonRpcError()) {
             closeSessionLocked()
             return@synchronized null

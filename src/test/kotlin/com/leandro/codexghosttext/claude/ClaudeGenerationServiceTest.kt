@@ -29,9 +29,8 @@ class ClaudeGenerationServiceTest {
         assertTrue(prompt.contains("before-context"))
         assertTrue(prompt.contains("after-context"))
         assertFalse(prompt.contains("C:/workspace", ignoreCase = true))
-        assertFalse(prompt.contains("inspect", ignoreCase = true))
-        assertFalse(prompt.contains("file", ignoreCase = true))
-        assertFalse(prompt.contains("tool", ignoreCase = true))
+        assertTrue(prompt.contains("herramientas de lectura"))
+        assertEquals(Path.of("C:/workspace/../workspace/arbol"), runner.requests.single().projectRoot)
     }
 
     @Test
@@ -78,7 +77,7 @@ class ClaudeGenerationServiceTest {
     }
 
     @Test
-    fun `resumes only the saved Claude id and retries fresh once after a resume failure`() {
+    fun `never creates a fresh Claude chat automatically when resume fails`() {
         val state = ClaudeProjectConversationState().also { it.remember("C:/workspace/arbol", "claude-session-saved") }
         val runner = ScriptedClaudeRunner(
             ClaudeProcessResult(exitCode = 1, diagnostic = ProviderDiagnostic.PROCESS_FAILED),
@@ -86,9 +85,9 @@ class ClaudeGenerationServiceTest {
         )
         val service = ClaudeGenerationService(runner, state)
 
-        assertEquals(GenerationResult.Success("fun fresca() = Unit"), service.generate(request()))
-        assertEquals(listOf("claude-session-saved", null), runner.requests.map { it.resumeSessionId })
-        assertEquals("claude-session-fresh", state.sessionFor("C:/workspace/arbol"))
+        assertTrue(service.generate(request()) is GenerationResult.Failure)
+        assertEquals(listOf("claude-session-saved"), runner.requests.map { it.resumeSessionId })
+        assertEquals("claude-session-saved", state.sessionFor("C:/workspace/arbol"))
     }
 
     @Test
@@ -110,12 +109,12 @@ class ClaudeGenerationServiceTest {
             ClaudeProcessResult(exitCode = 1, diagnostic = ProviderDiagnostic.PROCESS_FAILED),
         )
         assertTrue(ClaudeGenerationService(runner, state).generate(request()) is GenerationResult.Failure)
-        assertEquals(2, runner.requests.size)
-        assertNull(state.sessionFor("C:/workspace/arbol"))
+        assertEquals(1, runner.requests.size)
+        assertEquals("claude-session-saved", state.sessionFor("C:/workspace/arbol"))
     }
 
     @Test
-    fun `a cancelled or timed out resume clears only Claude state and never retries fresh`() {
+    fun `a cancelled or timed out resume preserves Claude state and never retries fresh`() {
         listOf(ProviderDiagnostic.CANCELLED, ProviderDiagnostic.PROCESS_TIMEOUT).forEach { diagnostic ->
             val state = ClaudeProjectConversationState().also { it.remember("C:/workspace/arbol", "claude-session-saved") }
             val runner = ScriptedClaudeRunner(
@@ -125,7 +124,7 @@ class ClaudeGenerationServiceTest {
 
             assertTrue(ClaudeGenerationService(runner, state).generate(request()) is GenerationResult.Failure)
             assertEquals(listOf("claude-session-saved"), runner.requests.map { it.resumeSessionId })
-            assertNull(state.sessionFor("C:/workspace/arbol"))
+            assertEquals("claude-session-saved", state.sessionFor("C:/workspace/arbol"))
         }
     }
 
