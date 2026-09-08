@@ -15,6 +15,38 @@ import org.junit.Test
 
 class ProviderAwareActionsTest {
     @Test
+    fun `descriptor keeps existing action identities while exposing neutral provider labels`() {
+        val descriptor = requireNotNull(javaClass.classLoader.getResource("META-INF/plugin.xml"))
+            .readText()
+        assertActionDescriptor(
+            descriptor,
+            CheckCodexConnectionAction.ACTION_ID,
+            CheckCodexConnectionAction::class.java,
+            "Check Selected AI Provider Connection",
+            "Check the selected local AI provider without generating code",
+        )
+        assertActionDescriptor(
+            descriptor,
+            "com.leandro.codexghosttext.ResetCodexProjectConversation",
+            ResetCodexProjectConversationAction::class.java,
+            "Reset Selected Provider Conversation for This Project",
+            "Forget this project's selected provider conversation and create a new one on the next generation",
+        )
+        assertActionDescriptor(
+            descriptor,
+            GenerateCodexGhostTextAction.ACTION_ID,
+            GenerateCodexGhostTextAction::class.java,
+            "Generate AI Ghost Text",
+            "Generate an AI code proposal from the selected comment",
+        )
+
+        assertEquals(1, Regex("<statusBarWidgetFactory\\b").findAll(descriptor).count())
+        assertTrue(descriptor.contains("group-id=\"ToolsMenu\""))
+        assertTrue(descriptor.contains("group-id=\"EditorPopupMenu\""))
+        assertFalse(descriptor.contains("keyboard-shortcut"))
+    }
+
+    @Test
     fun `check uses only the selected provider and keeps its diagnostic semantics`() {
         val codex = FakeProvider(ProviderId.CODEX, ProviderDiagnostic.QUOTA_EXHAUSTED)
         val claude = FakeProvider(ProviderId.CLAUDE, ProviderDiagnostic.UNSAFE_CAPABILITIES)
@@ -96,6 +128,19 @@ class ProviderAwareActionsTest {
         {},
         {},
     )
+
+    private fun assertActionDescriptor(
+        descriptor: String,
+        actionId: String,
+        actionClass: Class<*>,
+        text: String,
+        description: String,
+    ) {
+        assertTrue(descriptor.contains("id=\"$actionId\""))
+        assertTrue(descriptor.contains("class=\"${actionClass.name}\""))
+        assertTrue(descriptor.contains("text=\"$text\""))
+        assertTrue(descriptor.contains("description=\"$description\""))
+    }
 
     private class FakeProvider(
         override val providerId: ProviderId,

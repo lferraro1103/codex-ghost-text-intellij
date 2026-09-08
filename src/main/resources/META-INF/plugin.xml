@@ -17,20 +17,20 @@
   <actions>
     <action id="com.leandro.codexghosttext.CheckCodexConnection"
             class="com.leandro.codexghosttext.actions.CheckCodexConnectionAction"
-            text="Check Codex Connection"
-            description="Check the local Codex account connection without generating code">
+            text="Check Selected AI Provider Connection"
+            description="Check the selected local AI provider without generating code">
       <add-to-group group-id="ToolsMenu" anchor="last" />
     </action>
     <action id="com.leandro.codexghosttext.ResetCodexProjectConversation"
             class="com.leandro.codexghosttext.actions.ResetCodexProjectConversationAction"
-            text="Reset Codex Conversation for This Project"
-            description="Forget this project's Codex chat and create a new one on the next generation">
+            text="Reset Selected Provider Conversation for This Project"
+            description="Forget this project's selected provider conversation and create a new one on the next generation">
       <add-to-group group-id="ToolsMenu" anchor="last" />
     </action>
     <action id="com.leandro.codexghosttext.GenerateCodexGhostText"
             class="com.leandro.codexghosttext.actions.GenerateCodexGhostTextAction"
-            text="Generate Codex Ghost Text"
-            description="Generate a Codex code proposal from the selected comment">
+            text="Generate AI Ghost Text"
+            description="Generate an AI code proposal from the selected comment">
       <add-to-group group-id="EditorPopupMenu" anchor="last" />
     </action>
   </actions>
