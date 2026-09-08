@@ -57,4 +57,29 @@ class CodexGenerationProviderTest {
         assertEquals(ProviderDiagnostic.PROCESS_FAILED, diagnostic(CodexDiagnostic.CONNECTION_FAILED))
         assertFalse(diagnostic(CodexDiagnostic.MISSING_EXECUTABLE).isReady)
     }
+
+    @Test
+    fun `does not start a Codex chat when preflight finds missing access or quota`() {
+        listOf(
+            CodexDiagnostic.MISSING_EXECUTABLE to "No encontré Codex local.",
+            CodexDiagnostic.LOGIN_REQUIRED to "sesión de ChatGPT con acceso a Codex",
+            CodexDiagnostic.UNSUPPORTED_AUTH to "sesión de ChatGPT con acceso a Codex",
+            CodexDiagnostic.QUOTA_EXHAUSTED to "cuota de Codex está agotada",
+        ).forEach { (diagnostic, expectedMessage) ->
+            var generationCalls = 0
+            val provider = CodexGenerationProvider(
+                generate = { _, _, _ -> generationCalls++; GenerationResult.Success("unexpected") },
+                availability = { diagnostic },
+                cancel = {},
+                isGenerating = { false },
+                reset = {},
+            )
+
+            val result = provider.generate(GenerationRequest("// method", "// method", TextRange(0, 9), "C:/work/demo"))
+
+            assertTrue(result is GenerationResult.Failure)
+            assertTrue((result as GenerationResult.Failure).message.contains(expectedMessage))
+            assertEquals(0, generationCalls)
+        }
+    }
 }

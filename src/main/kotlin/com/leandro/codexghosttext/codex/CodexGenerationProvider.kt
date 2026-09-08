@@ -52,12 +52,29 @@ class CodexGenerationProvider private constructor(
         CodexDiagnostic.CONNECTION_FAILED -> ProviderDiagnostic.PROCESS_FAILED
     }
 
-    override fun generate(request: GenerationRequest): GenerationResult =
-        generate(request.comment, request.documentText, request.range)
+    override fun generate(request: GenerationRequest): GenerationResult {
+        // Do the same non-secret preflight used by the Tools action before opening an App Server
+        // thread. This turns missing CLI, account access, and exhausted quota into actionable UI
+        // feedback instead of a generic connection failure.
+        val diagnostic = availability()
+        if (diagnostic != CodexDiagnostic.CHATGPT_READY) {
+            return GenerationResult.Failure(diagnostic.generationFailureMessage())
+        }
+        return generate(request.comment, request.documentText, request.range)
+    }
 
     override fun cancel() = cancel.invoke()
 
     override fun isGenerating(): Boolean = isGenerating.invoke()
 
     override fun resetConversation() = reset.invoke()
+}
+
+private fun CodexDiagnostic.generationFailureMessage(): String = when (this) {
+    CodexDiagnostic.CHATGPT_READY -> error("A ready Codex diagnostic is not a generation failure.")
+    CodexDiagnostic.MISSING_EXECUTABLE -> "No encontré Codex local. Instalalo o agregalo al PATH y volvé a intentar."
+    CodexDiagnostic.LOGIN_REQUIRED, CodexDiagnostic.UNSUPPORTED_AUTH ->
+        "Codex requiere una sesión de ChatGPT con acceso a Codex. Iniciá sesión con `codex login` y verificá tu plan."
+    CodexDiagnostic.QUOTA_EXHAUSTED -> "La cuota de Codex está agotada. Esperá al próximo reinicio de cuota y volvé a intentar."
+    CodexDiagnostic.CONNECTION_FAILED -> "No pude comprobar Codex local. Verificá la instalación, tu acceso y volvé a intentar."
 }
