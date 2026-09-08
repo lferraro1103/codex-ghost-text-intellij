@@ -101,7 +101,8 @@ internal class PathClaudeExecutableLocator(
 ) : ClaudeExecutableLocator {
     override fun find(): Path? {
         val names = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
-            listOf("claude.exe", "claude.cmd")
+            // A batch shim would introduce cmd.exe as an unreviewed shell layer.
+            listOf("claude.exe")
         } else {
             listOf("claude")
         }
@@ -211,6 +212,8 @@ internal class DefaultClaudeProcessRunner(
     private val commandExecutor: ClaudeCommandExecutor = JdkClaudeCommandExecutor(),
     private val neutralWorkingDirectory: Path = defaultNeutralWorkingDirectory(),
 ) : ClaudeProcessRunner {
+    private val running = AtomicBoolean(false)
+
     override fun probe(): ClaudeCapabilityProfile {
         val executable = executableLocator.find() ?: return ClaudeCapabilityProfile(null, ProviderDiagnostic.MISSING_EXECUTABLE)
         val version = execute(executable, listOf("--version"))
@@ -246,9 +249,56 @@ internal class DefaultClaudeProcessRunner(
     }
 
     override fun run(profile: ClaudeCapabilityProfile, request: ClaudeProcessRequest): ClaudeProcessResult {
-        // Generation policy is added only after it receives its own capability-safety tests.
-        // Until then, a verified CLI remains fail-closed and cannot be invoked to generate.
-        return ClaudeProcessResult(diagnostic = ProviderDiagnostic.UNSAFE_CAPABILITIES)
+        if (!profile.isReady) return ClaudeProcessResult(diagnostic = profile.diagnostic)
+        if (!running.compareAndSet(false, true)) return ClaudeProcessResult(diagnostic = ProviderDiagnostic.PROCESS_ALREADY_RUNNING)
+        try {
+            val arguments = buildList {
+                add("-p")
+                add(request.prompt)
+                add("--safe-mode")
+                add("--output-format")
+                add("json")
+                add("--json-schema")
+                add(CODE_ONLY_SCHEMA)
+                // An empty allow-list is the primary D-01 capability boundary.
+                add("--tools")
+                add("")
+                // Explicit denials protect against a CLI capability-default regression.
+                add("--disallowedTools")
+                add(DISALLOWED_TOOLS.joinToString(","))
+                add("--permission-mode")
+                add("dontAsk")
+                add("--permission-prompts")
+                add("none")
+                add("--max-turns")
+                add("1")
+                request.resumeSessionId?.takeIf(String::isNotBlank)?.let { sessionId ->
+                    add("--resume")
+                    add(sessionId)
+                }
+            }
+            val raw = commandExecutor.execute(
+                ClaudeCommand(
+                    executable = requireNotNull(profile.executable),
+                    arguments = arguments,
+                    environmentRemovals = credentialEnvironmentNames,
+                    workingDirectory = neutralWorkingDirectory,
+                    timeoutMillis = GENERATION_TIMEOUT_MILLIS,
+                    stdoutLimitBytes = MAX_STDOUT_BYTES,
+                    stderrLimitBytes = MAX_STDERR_BYTES,
+                ),
+            )
+            return ClaudeProcessResult(
+                stdout = raw.stdout,
+                stderr = raw.stderr,
+                exitCode = raw.exitCode,
+                diagnostic = raw.boundaryDiagnostic(includeExitFailure = true),
+                stdoutTruncated = raw.stdoutTruncated,
+                stderrTruncated = raw.stderrTruncated,
+            )
+        } finally {
+            running.set(false)
+        }
     }
 
     override fun cancel() = commandExecutor.cancel()
@@ -277,10 +327,11 @@ internal class DefaultClaudeProcessRunner(
         )
     }
 
-    private fun ClaudeCommandResult.boundaryDiagnostic(): ProviderDiagnostic? = when {
+    private fun ClaudeCommandResult.boundaryDiagnostic(includeExitFailure: Boolean = false): ProviderDiagnostic? = when {
         cancelled -> ProviderDiagnostic.CANCELLED
         timedOut -> ProviderDiagnostic.PROCESS_TIMEOUT
         stdoutTruncated || stderrTruncated -> ProviderDiagnostic.PROCESS_OUTPUT_TOO_LARGE
+        includeExitFailure && exitCode != 0 -> ProviderDiagnostic.PROCESS_FAILED
         else -> null
     }
 
@@ -317,12 +368,31 @@ internal class DefaultClaudeProcessRunner(
             "ANTHROPIC_AUTH_TOKEN",
             "CLAUDE_CODE_OAUTH_TOKEN",
         )
+        private val DISALLOWED_TOOLS = listOf(
+            "Read",
+            "Glob",
+            "Grep",
+            "Bash",
+            "Edit",
+            "WebFetch",
+            "WebSearch",
+            "Agent",
+            "NotebookEdit",
+            "MCP",
+            "Browser",
+            "ProjectInspection",
+            "mcp__*",
+        )
 
         private val VERSION_PATTERN = Regex("""(?<![0-9])(\d+)\.(\d+)\.(\d+)(?![0-9])""")
         private val AUTH_BOOLEAN = Regex("""\"(?:loggedIn|authenticated)\"\s*:\s*(true|false)""", RegexOption.IGNORE_CASE)
         private val AUTH_STATUS = Regex("""\"status\"\s*:\s*\"([^\"]+)\"""", RegexOption.IGNORE_CASE)
         private const val PROBE_TIMEOUT_MILLIS = 8_000L
+        private const val GENERATION_TIMEOUT_MILLIS = 75_000L
         private const val MAX_PROBE_OUTPUT_BYTES = 64 * 1024
+        private const val MAX_STDOUT_BYTES = 128 * 1024
+        private const val MAX_STDERR_BYTES = 32 * 1024
+        private const val CODE_ONLY_SCHEMA = "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"code\":{\"type\":\"string\"}},\"required\":[\"code\"]}"
 
         private fun defaultNeutralWorkingDirectory(): Path {
             val directory = Path.of(System.getProperty("java.io.tmpdir"), "codex-ghost-text", "claude")
