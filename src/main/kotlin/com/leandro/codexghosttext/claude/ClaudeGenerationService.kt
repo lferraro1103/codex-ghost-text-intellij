@@ -55,6 +55,9 @@ class ClaudeGenerationService private constructor(
             if (savedSession != null) {
                 // A resume id is useful only if its entire invocation and envelope were valid.
                 conversationState.forget()
+                if (!(first as ParsedProposal.Failure).mayRetryFresh) {
+                    return GenerationResult.Failure(first.message)
+                }
                 val fresh = generateOnce(profile, prompt, null)
                 if (fresh is ParsedProposal.Success) {
                     conversationState.remember(request.projectRoot, fresh.sessionId)
@@ -86,9 +89,11 @@ class ClaudeGenerationService private constructor(
         sessionId: String?,
     ): ParsedProposal {
         val result = processRunner.run(profile, ClaudeProcessRequest(prompt, sessionId))
-        result.diagnostic?.let { return ParsedProposal.Failure(it.userMessage) }
+        result.diagnostic?.let {
+            return ParsedProposal.Failure(it.userMessage, mayRetryFresh = it == ProviderDiagnostic.PROCESS_FAILED)
+        }
         if (result.exitCode != 0 || result.stdoutTruncated || result.stderrTruncated) {
-            return ParsedProposal.Failure(ProviderDiagnostic.PROCESS_FAILED.userMessage)
+            return ParsedProposal.Failure(ProviderDiagnostic.PROCESS_FAILED.userMessage, mayRetryFresh = true)
         }
         return ClaudeEnvelopeParser.parse(result.stdout)
     }
@@ -105,7 +110,7 @@ class ClaudeGenerationService private constructor(
 
     private sealed interface ParsedProposal {
         data class Success(val code: String, val sessionId: String) : ParsedProposal
-        data class Failure(val message: String) : ParsedProposal
+        data class Failure(val message: String, val mayRetryFresh: Boolean = false) : ParsedProposal
     }
 
     private object ClaudeEnvelopeParser {
