@@ -17,6 +17,7 @@ import com.leandro.codexghosttext.generation.LocalGenerationProvider
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import com.leandro.codexghosttext.provider.ProviderSelectionSnapshot
+import com.leandro.codexghosttext.status.GenerationRequestTracker
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 
 class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
@@ -172,6 +173,16 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
 
         providerStillSelected = true
         assertTrue(tracker.capture(ProviderSelectionSnapshot(ProviderId.CODEX, codex, 1)) { providerStillSelected }.isCurrent())
+    }
+
+    fun testOlderActionCompletionCannotClearTheNewerProviderSpinner() {
+        val spinner = GenerationRequestTracker()
+        val older = spinner.begin()
+        val newer = spinner.begin()
+
+        assertFalse(spinner.finish(older))
+        assertEquals(newer, spinner.activeRequest())
+        assertTrue(spinner.finish(newer))
     }
 
     private fun editorEvent(action: GenerateCodexGhostTextAction, place: String = ActionPlaces.EDITOR_POPUP): AnActionEvent {
