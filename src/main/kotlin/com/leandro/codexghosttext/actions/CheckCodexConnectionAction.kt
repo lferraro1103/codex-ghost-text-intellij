@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAwareAction
+import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import com.leandro.codexghosttext.provider.ProviderRouterService
@@ -21,9 +22,19 @@ class CheckCodexConnectionAction : DumbAwareAction() {
                 .checkSelectedAvailability()
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
+                val message = ProviderActionFeedback.messageFor(availability)
+                val dump = if (!availability.diagnostic.isReady) {
+                    GenerationDiagnosticDump.write(project, availability.providerId, message, source = "connection-check")
+                } else {
+                    null
+                }
+                val messageWithDump = buildString {
+                    append(message)
+                    dump?.let { append("\nDiagnóstico guardado en: $it") }
+                }
                 NotificationGroupManager.getInstance().getNotificationGroup(GenerateCodexGhostTextAction.NOTIFICATION_GROUP_ID)
                     .createNotification(
-                        ProviderActionFeedback.messageFor(availability),
+                        messageWithDump,
                         ProviderActionFeedback.notificationTypeFor(availability),
                     )
                     .notify(project)

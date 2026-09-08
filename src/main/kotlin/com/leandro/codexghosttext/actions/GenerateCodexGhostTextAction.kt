@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
 import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
 import com.leandro.codexghosttext.preview.GhostPreviewService
@@ -73,8 +74,20 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                             if (!shown) NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
                                 .createNotification("No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING).notify(project)
                         }
-                        is GenerationResult.Failure -> NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                            .createNotification(result.message, NotificationType.WARNING).notify(project)
+                        is GenerationResult.Failure -> {
+                            val dump = GenerationDiagnosticDump.write(
+                                project,
+                                selectedProvider.providerId,
+                                result.message,
+                                source = "generation",
+                            )
+                            val message = buildString {
+                                append(result.message)
+                                dump?.let { append("\nDiagnóstico guardado en: $it") }
+                            }
+                            NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
+                                .createNotification(message, NotificationType.WARNING).notify(project)
+                        }
                     }
                 }
             }
