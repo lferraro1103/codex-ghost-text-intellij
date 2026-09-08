@@ -10,6 +10,13 @@ import com.intellij.notification.Notifications
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.impl.SimpleDataContext
+import com.intellij.openapi.util.TextRange
+import com.leandro.codexghosttext.generation.GenerationRequest
+import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.generation.LocalGenerationProvider
+import com.leandro.codexghosttext.generation.ProviderDiagnostic
+import com.leandro.codexghosttext.generation.ProviderId
+import com.leandro.codexghosttext.provider.ProviderSelectionSnapshot
 import com.intellij.testFramework.fixtures.LightJavaCodeInsightFixtureTestCase
 
 class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
@@ -113,6 +120,60 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
         assertEmpty(action.shortcutSet.shortcuts)
     }
 
+    fun testDispatchCallsOnlyTheProviderCapturedAtInvocation() {
+        val codex = RecordingProvider(ProviderId.CODEX, GenerationResult.Success("public void codex() {}"))
+        val claude = RecordingProvider(ProviderId.CLAUDE, GenerationResult.Success("public void claude() {}"))
+        val tracker = ActionGenerationRequestTracker()
+        val dispatch = tracker.capture(ProviderSelectionSnapshot(ProviderId.CLAUDE, claude, 7)) { true }
+
+        val result = dispatch.generate(request())
+
+        assertEquals(GenerationResult.Success("public void claude() {}"), result)
+        assertEquals(0, codex.generateCalls)
+        assertEquals(1, claude.generateCalls)
+        assertTrue(dispatch.isCurrent())
+    }
+
+    fun testProviderFailureDoesNotFallBackToTheOtherProvider() {
+        val codex = RecordingProvider(ProviderId.CODEX, GenerationResult.Failure("Codex no está listo"))
+        val claude = RecordingProvider(ProviderId.CLAUDE, GenerationResult.Success("public void claude() {}"))
+        val dispatch = ActionGenerationRequestTracker()
+            .capture(ProviderSelectionSnapshot(ProviderId.CODEX, codex, 3)) { true }
+
+        assertEquals(GenerationResult.Failure("Codex no está listo"), dispatch.generate(request()))
+        assertEquals(1, codex.generateCalls)
+        assertEquals(0, claude.generateCalls)
+    }
+
+    fun testSwitchOrNewRequestMakesLateResultUndeliverable() {
+        val claude = RecordingProvider(ProviderId.CLAUDE, GenerationResult.Success("public void claude() {}"))
+        var providerStillSelected = true
+        val tracker = ActionGenerationRequestTracker()
+        val first = tracker.capture(ProviderSelectionSnapshot(ProviderId.CLAUDE, claude, 4)) { providerStillSelected }
+
+        assertEquals(GenerationResult.Success("public void claude() {}"), first.generate(request()))
+        providerStillSelected = false
+        assertFalse(first.isCurrent())
+
+        providerStillSelected = true
+        val second = tracker.capture(ProviderSelectionSnapshot(ProviderId.CLAUDE, claude, 4)) { providerStillSelected }
+        assertFalse(first.isCurrent())
+        assertTrue(second.isCurrent())
+    }
+
+    fun testStaleDispatchDoesNotStartAnotherProviderRequest() {
+        val codex = RecordingProvider(ProviderId.CODEX, GenerationResult.Success("public void codex() {}"))
+        val tracker = ActionGenerationRequestTracker()
+        var providerStillSelected = false
+        val dispatch = tracker.capture(ProviderSelectionSnapshot(ProviderId.CODEX, codex, 1)) { providerStillSelected }
+
+        assertEquals(GenerationResult.Failure(ProviderDiagnostic.CANCELLED.userMessage), dispatch.generate(request()))
+        assertEquals(0, codex.generateCalls)
+
+        providerStillSelected = true
+        assertTrue(tracker.capture(ProviderSelectionSnapshot(ProviderId.CODEX, codex, 1)) { providerStillSelected }.isCurrent())
+    }
+
     private fun editorEvent(action: GenerateCodexGhostTextAction, place: String = ActionPlaces.EDITOR_POPUP): AnActionEvent {
         val context: DataContext = SimpleDataContext.builder()
             .add(CommonDataKeys.PROJECT, project)
@@ -131,5 +192,32 @@ class GenerateCodexGhostTextActionTest : LightJavaCodeInsightFixtureTestCase() {
 
     private companion object {
         const val ACTION_ID = "com.leandro.codexghosttext.GenerateCodexGhostText"
+    }
+
+    private fun request() = GenerationRequest(
+        comment = "// create method",
+        documentText = "// create method\nclass Sample {}",
+        range = TextRange(0, "// create method".length),
+        projectRoot = "test-project",
+    )
+
+    private class RecordingProvider(
+        override val providerId: ProviderId,
+        private val result: GenerationResult,
+    ) : LocalGenerationProvider {
+        var generateCalls = 0
+
+        override fun checkAvailability(): ProviderDiagnostic = ProviderDiagnostic.READY
+
+        override fun generate(request: GenerationRequest): GenerationResult {
+            generateCalls++
+            return result
+        }
+
+        override fun cancel() = Unit
+
+        override fun isGenerating(): Boolean = false
+
+        override fun resetConversation() = Unit
     }
 }
