@@ -60,6 +60,7 @@ class ClaudeGenerationServiceTest {
             "not json",
             "{\"session_id\":\"claude-session-1\"}",
             "{\"type\":\"error\",\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}",
+            "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"   \"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"Voy a implementar esto.\"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"```kotlin\\nfun x() = Unit\\n```\"}}",
             "{\"session_id\":\"claude-session-1\",\"session_id\":\"other\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}",
@@ -111,6 +112,21 @@ class ClaudeGenerationServiceTest {
         assertTrue(ClaudeGenerationService(runner, state).generate(request()) is GenerationResult.Failure)
         assertEquals(2, runner.requests.size)
         assertNull(state.sessionFor("C:/workspace/arbol"))
+    }
+
+    @Test
+    fun `a cancelled or timed out resume clears only Claude state and never retries fresh`() {
+        listOf(ProviderDiagnostic.CANCELLED, ProviderDiagnostic.PROCESS_TIMEOUT).forEach { diagnostic ->
+            val state = ClaudeProjectConversationState().also { it.remember("C:/workspace/arbol", "claude-session-saved") }
+            val runner = ScriptedClaudeRunner(
+                ClaudeProcessResult(diagnostic = diagnostic),
+                success("fun mustNotRun() = Unit", "claude-session-fresh"),
+            )
+
+            assertTrue(ClaudeGenerationService(runner, state).generate(request()) is GenerationResult.Failure)
+            assertEquals(listOf("claude-session-saved"), runner.requests.map { it.resumeSessionId })
+            assertNull(state.sessionFor("C:/workspace/arbol"))
+        }
     }
 
     private fun request(root: String = "C:/workspace/arbol") = GenerationRequest(
