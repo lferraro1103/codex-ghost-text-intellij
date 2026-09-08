@@ -33,7 +33,7 @@ class ProviderRouterServiceTest {
 
         assertEquals(ProviderId.CLAUDE, router.snapshot().providerId)
         assertEquals(ProviderDiagnostic.LOGIN_REQUIRED, router.checkAvailability())
-        assertEquals(0, codex.availabilityChecks)
+        assertEquals(1, codex.availabilityChecks)
         assertEquals(1, claude.availabilityChecks)
     }
 
