@@ -74,7 +74,10 @@ private class ProviderSelectorWidget(
     override fun getPopupStep(): ListPopup = JBPopupFactory.getInstance().createListPopup(object : BaseListPopupStep<ProviderId>(null, model.choices()) {
         override fun getTextFor(value: ProviderId): String = model.displayName(value)
 
-        override fun onChosen(selectedValue: ProviderId, finalChoice: Boolean): PopupStep<*> {
+        // `FINAL_CHOICE` is IntelliJ's Java null sentinel: it means "close this popup".
+        // Keep the nullable return type so Kotlin does not turn that sentinel into an NPE
+        // on IDE builds whose annotations expose this method as nullable.
+        override fun onChosen(selectedValue: ProviderId, finalChoice: Boolean): PopupStep<*>? {
             model.choose(selectedValue)
             updatePresentation()
             return FINAL_CHOICE
