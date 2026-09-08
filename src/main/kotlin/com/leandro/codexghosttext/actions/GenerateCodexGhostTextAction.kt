@@ -11,7 +11,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.leandro.codexghosttext.selection.SelectedCommentResolver
 import com.leandro.codexghosttext.preview.GhostPreviewService
 import com.leandro.codexghosttext.codex.CodexGenerationService
-import com.leandro.codexghosttext.codex.GenerationResult
+import com.leandro.codexghosttext.generation.GenerationResult
 import com.leandro.codexghosttext.status.CodexGenerationStatusService
 
 class GenerateCodexGhostTextAction : DumbAwareAction() {

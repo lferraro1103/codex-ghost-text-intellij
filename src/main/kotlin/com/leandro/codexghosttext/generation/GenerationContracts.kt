@@ -41,6 +41,7 @@ enum class ProviderDiagnostic(val isReady: Boolean, val userMessage: String) {
     PROCESS_TIMEOUT(false, "La CLI tardó demasiado en responder."),
     PROCESS_OUTPUT_TOO_LARGE(false, "La CLI devolvió demasiada salida."),
     PROCESS_FAILED(false, "La CLI local no pudo completar la operación."),
+    QUOTA_EXHAUSTED(false, "La cuota de la CLI local está agotada."),
     PROCESS_ALREADY_RUNNING(false, "Ya hay una generación en curso."),
     CANCELLED(false, "La generación fue cancelada."),
 }

@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
+import com.leandro.codexghosttext.generation.GenerationResult
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -206,11 +207,6 @@ class CodexGenerationService(private val project: Project) : Disposable {
     override fun dispose() {
         synchronized(sessionLock) { closeSessionLocked() }
     }
-}
-
-sealed interface GenerationResult {
-    data class Success(val code: String) : GenerationResult
-    data class Failure(val message: String) : GenerationResult
 }
 
 private fun BufferedWriter.rpc(id: Int, method: String, params: String) {
