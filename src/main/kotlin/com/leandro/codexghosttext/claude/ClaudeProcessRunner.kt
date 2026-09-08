@@ -99,20 +99,106 @@ internal interface ClaudeCommandExecutor {
 /** Locates only a regular, executable local CLI file; it never invokes a shell or login command. */
 internal class PathClaudeExecutableLocator(
     private val path: String = System.getenv("PATH").orEmpty(),
+    private val userHome: String = System.getProperty("user.home").orEmpty(),
+    private val osName: String = System.getProperty("os.name").orEmpty(),
 ) : ClaudeExecutableLocator {
     override fun find(): Path? {
-        val names = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
-            // A batch shim would introduce cmd.exe as an unreviewed shell layer.
-            listOf("claude.exe")
-        } else {
-            listOf("claude")
+        return candidates().firstOrNull { candidate ->
+            Files.isRegularFile(candidate.path) && Files.isExecutable(candidate.path)
+        }?.path
+    }
+
+    /** A redacted, filesystem-only trace for support dumps; it never executes a shell command. */
+    internal fun diagnosticReport(): String = buildString {
+        val candidates = candidates()
+        appendLine("pathEntryCount=${path.split(java.io.File.pathSeparatorChar).count(String::isNotBlank)}")
+        appendLine("candidateCount=${candidates.size}")
+        candidates.take(MAX_DIAGNOSTIC_CANDIDATES).forEach { candidate ->
+            val state = when {
+                Files.isRegularFile(candidate.path) && Files.isExecutable(candidate.path) -> "executable"
+                Files.isRegularFile(candidate.path) -> "not-executable"
+                Files.exists(candidate.path) -> "not-a-regular-file"
+                else -> "missing"
+            }
+            appendLine("candidate[${candidate.source}]=${displayPath(candidate.path)} status=$state")
         }
-        return path.split(java.io.File.pathSeparatorChar)
+        if (candidates.size > MAX_DIAGNOSTIC_CANDIDATES) appendLine("candidateList=truncated")
+    }.trimEnd()
+
+    private fun candidates(): List<Candidate> {
+        val names = executableNames()
+        val fromPath = path.split(java.io.File.pathSeparatorChar)
             .asSequence()
             .filter(String::isNotBlank)
             .mapNotNull { directory -> runCatching { Path.of(directory) }.getOrNull() }
-            .flatMap { directory -> names.asSequence().map(directory::resolve) }
-            .firstOrNull { candidate -> Files.isRegularFile(candidate) && Files.isExecutable(candidate) }
+            .flatMap { directory -> names.asSequence().map { name -> Candidate("PATH", directory.resolve(name)) } }
+        val common = commonDirectories()
+            .asSequence()
+            .flatMap { directory -> names.asSequence().map { name -> Candidate("common", directory.resolve(name)) } }
+        val nvm = nvmDirectories()
+            .asSequence()
+            .flatMap { directory -> names.asSequence().map { name -> Candidate("nvm", directory.resolve(name)) } }
+        return (fromPath + common + nvm).distinctBy { it.path.normalize().toString() }.toList()
+    }
+
+    private fun executableNames(): List<String> = if (osName.startsWith("Windows", ignoreCase = true)) {
+        // A batch shim would introduce cmd.exe as an unreviewed shell layer.
+        listOf("claude.exe")
+    } else {
+        listOf("claude")
+    }
+
+    private fun commonDirectories(): List<Path> = buildList {
+        if (userHome.isNotBlank()) {
+            val home = runCatching { Path.of(userHome) }.getOrNull()
+            if (home != null) addAll(
+                listOf(
+                    home.resolve(".local/bin"),
+                    home.resolve(".npm-global/bin"),
+                    home.resolve(".npm/bin"),
+                    home.resolve(".npm-packages/bin"),
+                    home.resolve(".volta/bin"),
+                    home.resolve(".yarn/bin"),
+                    home.resolve(".config/yarn/global/node_modules/.bin"),
+                    home.resolve(".bun/bin"),
+                    home.resolve(".local/share/pnpm"),
+                    home.resolve("Library/pnpm"),
+                ),
+            )
+        }
+        if (!osName.startsWith("Windows", ignoreCase = true)) addAll(listOf(Path.of("/usr/local/bin"), Path.of("/opt/homebrew/bin")))
+    }
+
+    private fun nvmDirectories(): List<Path> {
+        if (userHome.isBlank() || osName.startsWith("Windows", ignoreCase = true)) return emptyList()
+        val root = runCatching { Path.of(userHome, ".nvm", "versions", "node") }.getOrNull() ?: return emptyList()
+        if (!Files.isDirectory(root)) return emptyList()
+        return runCatching {
+            Files.list(root).use { versions ->
+                versions.filter(Files::isDirectory).map { it.resolve("bin") }.toList()
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun displayPath(path: Path): String {
+        val normalized = displayPathText(path)
+        val home = userHome.takeIf(String::isNotBlank)?.let {
+            runCatching { displayPathText(Path.of(it)) }.getOrNull()
+        }
+        return if (home != null && normalized.startsWith(home, ignoreCase = osName.startsWith("Windows", ignoreCase = true))) {
+            "<home>" + normalized.removePrefix(home)
+        } else {
+            normalized
+        }
+    }
+
+    private fun displayPathText(path: Path): String = path.toAbsolutePath().normalize().toString()
+        .let { value -> if (osName.startsWith("Windows", ignoreCase = true)) value else value.replace('\\', '/') }
+
+    private data class Candidate(val source: String, val path: Path)
+
+    private companion object {
+        const val MAX_DIAGNOSTIC_CANDIDATES = 48
     }
 }
 

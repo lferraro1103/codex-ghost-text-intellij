@@ -11,6 +11,15 @@ import java.util.ArrayDeque
 
 class ClaudeProcessRunnerTest {
     @Test
+    fun `locator diagnoses standard macOS locations even when IntelliJ PATH is empty`() {
+        val locator = PathClaudeExecutableLocator(path = "", userHome = "/Users/example", osName = "Mac OS X")
+        val report = locator.diagnosticReport()
+
+        assertTrue(report.contains("candidate[common]=<home>/.local/bin/claude status=missing"))
+        assertTrue(report.contains("pathEntryCount=0"))
+    }
+
+    @Test
     fun `requires a ready profile before a generation command can be built`() {
         val executable = Path.of("C:/tools/claude.exe")
         val executor = RecordingClaudeCommandExecutor(

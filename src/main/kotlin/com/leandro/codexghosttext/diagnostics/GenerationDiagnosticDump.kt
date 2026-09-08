@@ -47,7 +47,10 @@ internal object GenerationDiagnosticDump {
         appendLine("os=${sanitize(System.getProperty("os.name"))} ${sanitize(System.getProperty("os.version"))}")
         appendLine("java=${sanitize(System.getProperty("java.version"))}")
         appendLine("codexExecutable=${CodexExecutableLocator.find()?.toString() ?: "<not found>"}")
-        appendLine("claudeExecutable=${PathClaudeExecutableLocator().find()?.toString() ?: "<not found>"}")
+        val claudeLocator = PathClaudeExecutableLocator()
+        appendLine("claudeExecutable=${claudeLocator.find()?.toString() ?: "<not found>"}")
+        appendLine("claudeLookup:")
+        appendLine(claudeLocator.diagnosticReport().prependIndent("  "))
         appendLine("redaction=No source code, prompts, PATH values, account data, authentication tokens, or CLI output are included.")
     }
 
