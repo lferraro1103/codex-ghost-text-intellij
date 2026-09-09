@@ -5,7 +5,9 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.leandro.codexghosttext.env.LocalCliEnvironment
+import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.generation.SourceLanguage
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -52,7 +54,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
         }
     }
 
-    fun generate(comment: String, documentText: String, range: TextRange): GenerationResult {
+    fun generate(request: GenerationRequest): GenerationResult {
         val executable = CodexExecutableLocator.find() ?: return GenerationResult.Failure("No encontré Codex local.")
         val projectRoot = project.basePath?.canonicalProjectRoot()
             ?: return GenerationResult.Failure("El proyecto no tiene una carpeta disponible.")
@@ -71,12 +73,13 @@ class CodexGenerationService(private val project: Project) : Disposable {
                 Si no podés producir código insertable, respondé vacío. El proyecto asociado está disponible sólo
                 en lectura mediante su carpeta de trabajo: inspeccioná archivos únicamente si necesitás ese contexto
                 para generar el código y nunca los modifiques.
+                ${SourceLanguage.instruction(request)}
 
                 Comentario seleccionado:
-                $comment
+                ${request.comment}
 
                 Contexto cercano del archivo:
-                ${documentText.window(range)}
+                ${request.documentText.window(request.range)}
             """.trimIndent()
             val turnRequestId = nextRequestId()
             synchronized(writerLock) {
@@ -91,7 +94,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
             if (turnResponse.isJsonRpcError()) return GenerationResult.Failure("Codex rechazó iniciar la generación.")
             activeTurnId = turnResponse.turnId()
                 ?: return GenerationResult.Failure("Codex no devolvió una generación válida.")
-            return collect(reader)
+            return collect(reader, request)
         } catch (_: Exception) {
             return GenerationResult.Failure("Falló la conexión local con Codex.")
         } finally {
@@ -164,7 +167,7 @@ class CodexGenerationService(private val project: Project) : Disposable {
         return CodexProtocol.responseForId(reader, id)
     }
 
-    private fun collect(reader: BufferedReader): GenerationResult {
+    private fun collect(reader: BufferedReader, request: GenerationRequest): GenerationResult {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(75)
         val text = StringBuilder()
         while (System.nanoTime() < deadline) {
@@ -178,13 +181,18 @@ class CodexGenerationService(private val project: Project) : Disposable {
                 line.contains("\"method\":\"item/agentMessage/delta\"") -> line.jsonField("delta")?.let(text::append)
                 line.contains("\"type\":\"fileChange\"") || line.contains("\"method\":\"applyPatchApproval\"") -> return GenerationResult.Failure("Codex intentó modificar archivos; la propuesta fue cancelada.")
                 line.contains("\"type\":\"mcpToolCall\"") || line.contains("\"type\":\"dynamicToolCall\"") || line.contains("\"type\":\"collabAgentToolCall\"") || line.contains("\"type\":\"webSearch\"") -> return GenerationResult.Failure("Codex intentó usar una herramienta no permitida; la propuesta fue cancelada.")
-                line.contains("\"method\":\"turn/completed\"") -> return if (line.contains("\"status\":\"completed\"")) proposal(text.toString()) else GenerationResult.Failure("Codex no pudo completar la generación.")
+                line.contains("\"method\":\"turn/completed\"") -> return if (line.contains("\"status\":\"completed\"")) proposal(text.toString(), request) else GenerationResult.Failure("Codex no pudo completar la generación.")
             }
         }
         return GenerationResult.Failure("Codex tardó demasiado en responder.")
     }
 
-    private fun proposal(raw: String): GenerationResult {
+    private fun proposal(raw: String, request: GenerationRequest): GenerationResult {
+        raw.fenceTag()?.let { tag ->
+            if (SourceLanguage.fenceConflicts(tag, request.language, request.fileName)) {
+                return GenerationResult.Failure("Codex respondió en $tag y el archivo no está en ese lenguaje.")
+            }
+        }
         val code = raw.codeOnlyProposal()
         return if (code.isBlank() || code.length > 16_000 || code.lines().size > 80) GenerationResult.Failure("Codex no devolvió una propuesta utilizable.") else GenerationResult.Success(code)
     }
@@ -272,6 +280,14 @@ internal fun String.turnId(): String? {
 }
 
 internal fun String.isJsonRpcError(): Boolean = contains("\"error\"") && !contains("\"result\"")
+
+/** The language tag Codex put on an opening fence, when it announced one. */
+internal fun String.fenceTag(): String? = trimStart()
+    .takeIf { it.startsWith("```") }
+    ?.substringAfter("```")
+    ?.substringBefore('\n')
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() && it.matches(Regex("[A-Za-z0-9+#._-]{1,20}")) }
 
 internal fun String.codeOnlyProposal(): String {
     val text = trim().removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()

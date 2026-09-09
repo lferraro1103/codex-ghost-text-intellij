@@ -42,7 +42,9 @@ object SelectedCommentResolver {
         if (!isWhitespaceOnly(text, start, commentRange.startOffset)) return null
         if (!isWhitespaceOnly(text, commentRange.endOffset, end)) return null
 
-        return SelectedComment(commentRange)
+        // The file's language travels with the selection so a provider proposes code in it
+        // instead of inferring a language from the surrounding context.
+        return SelectedComment(commentRange, psiFile.language.displayName, psiFile.name)
     }
 
     private fun commentAt(psiFile: PsiFile, offset: Int): PsiComment? {
@@ -72,4 +74,8 @@ object SelectedCommentResolver {
     }
 }
 
-data class SelectedComment(val range: TextRange)
+data class SelectedComment(
+    val range: TextRange,
+    val language: String = "",
+    val fileName: String = "",
+)

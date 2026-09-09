@@ -38,6 +38,28 @@ class ClaudeGenerationServiceTest {
     }
 
     @Test
+    fun `sends the edited file's language in the prompt`() {
+        val runner = ScriptedClaudeRunner(success("fun nueva() = Unit"))
+
+        ClaudeGenerationService(runner, ClaudeProjectConversationState()).generate(
+            request().copy(language = "Kotlin", fileName = "Arbol.kt"),
+        )
+
+        assertTrue(runner.requests.single().prompt.contains("El archivo es Kotlin (Arbol.kt)"))
+    }
+
+    @Test
+    fun `rejects a proposal fenced as a language the edited file is not`() {
+        val runner = ScriptedClaudeRunner(success("```javascript\nfunction sumar(a, b) {\n  return a + b;\n}\n```"))
+
+        val result = ClaudeGenerationService(runner, ClaudeProjectConversationState()).generate(
+            request().copy(language = "Kotlin", fileName = "Arbol.kt"),
+        )
+
+        assertTrue(result is GenerationResult.Failure)
+    }
+
+    @Test
     fun `accepts a proposal written in a language other than Kotlin or Java`() {
         val accepted = listOf(
             "const total = a + b;",

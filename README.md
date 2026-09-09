@@ -10,8 +10,9 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 
 - Run **Generate Codex Ghost Text** on a selected comment from the editor context menu.
 - Manual requests only; it never generates while you type.
-- A generation spinner in the IDE status bar.
+- A generation spinner in the IDE status bar, and a loading placeholder under the selected comment while a provider works.
 - Multi-line translucent green preview, aligned to the comment indentation.
+- The request carries the edited file's language, and a proposal fenced as another language is rejected.
 - Accept with `|`; dismiss with `Esc`.
 - The document changes only after explicit acceptance.
 - Choose **Codex** or **Claude** from a persistent project-local selector in the status bar.
@@ -81,6 +82,8 @@ The session uses a read-only sandbox, `never` approval, disabled web search, and
 | `CodexAvailabilityService` | Checks the executable, ChatGPT authentication, and available quota. |
 | `GhostPreviewService` | Keeps the proposal outside the document and inserts only after acceptance. |
 | `GhostBlockRenderer` | Draws the correctly-indented green block. |
+| `GhostLoadingIndicator` | Shows the loading placeholder under the comment while a request runs. |
+| `SourceLanguage` | Puts the file's language in the prompt and rejects a proposal fenced as another one. |
 | `CodexGhostTypedHandler` | Captures `|` before IntelliJ writes it and accepts the proposal. |
 | `GhostKeyHandlerInstaller` | Cancels an active proposal with `Esc`. |
 
@@ -118,8 +121,9 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 
 - Ejecutar **Generate Codex Ghost Text** sobre un comentario seleccionado desde el menú contextual del editor.
 - Solicitudes manuales: no genera código mientras escribís.
-- Indicador de generación en la barra de estado del IDE.
+- Indicador de generación en la barra de estado del IDE, y un placeholder de carga bajo el comentario seleccionado mientras el proveedor trabaja.
 - Vista previa multilínea verde y translúcida, alineada con la sangría del comentario.
+- La consulta lleva el lenguaje del archivo editado, y se rechaza una propuesta marcada como otro lenguaje.
 - Aceptación con `|`; cancelación con `Esc`.
 - El documento sólo cambia después de aceptar explícitamente.
 - Elegí **Codex** o **Claude** desde un selector persistente y local al proyecto en la barra de estado.
@@ -189,6 +193,8 @@ La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desa
 | `CodexAvailabilityService` | Comprueba ejecutable, autenticación ChatGPT y cuota disponible. |
 | `GhostPreviewService` | Mantiene la propuesta fuera del documento e inserta sólo al aceptar. |
 | `GhostBlockRenderer` | Dibuja el bloque verde con la sangría correcta. |
+| `GhostLoadingIndicator` | Muestra el placeholder de carga bajo el comentario mientras corre una consulta. |
+| `SourceLanguage` | Pone el lenguaje del archivo en el prompt y rechaza una propuesta marcada como otro. |
 | `CodexGhostTypedHandler` | Captura `|` antes de que IntelliJ lo escriba y acepta la propuesta. |
 | `GhostKeyHandlerInstaller` | Cancela una propuesta activa con `Esc`. |
 

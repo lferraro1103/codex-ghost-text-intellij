@@ -12,6 +12,7 @@ import com.intellij.openapi.components.Service
 import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
 import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.preview.GhostLoadingIndicator
 import com.leandro.codexghosttext.preview.GhostPreviewService
 import com.leandro.codexghosttext.provider.ProviderRouterService
 import com.leandro.codexghosttext.provider.ProviderSelectionSnapshot
@@ -47,6 +48,9 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
             // selected provider request, but never write the document from this action.
             project.getService(GhostPreviewService::class.java).cancel()
             selectedProvider.provider.cancel()
+            // A placeholder under the comment, so the request is visible where the user is looking
+            // and not only in the status bar. It writes nothing and is removed on every outcome.
+            project.getService(GhostLoadingIndicator::class.java).show(editor, selectedComment.range)
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
             val generationStatus = project.getService(CodexGenerationStatusService::class.java)
@@ -57,6 +61,8 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 range = selectedComment.range,
                 // This key is provider state metadata only. Claude's process/prompt must never see it.
                 projectRoot = project.basePath?.let { runCatching { File(it).canonicalPath }.getOrDefault(it) } ?: project.locationHash,
+                language = selectedComment.language,
+                fileName = selectedComment.fileName,
             )
             ApplicationManager.getApplication().executeOnPooledThread {
                 val result = runCatching { dispatch.generate(request) }
@@ -71,6 +77,7 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 }
                 ApplicationManager.getApplication().invokeLater {
                     generationStatus.hide(statusRequest)
+                    if (!project.isDisposed) project.getService(GhostLoadingIndicator::class.java).hide()
                     // The selected comment is only input to the request. The user can navigate
                     // elsewhere while a provider works; an edit or provider switch invalidates it.
                     if (!dispatch.isCurrent() || project.isDisposed || editor.isDisposed ||

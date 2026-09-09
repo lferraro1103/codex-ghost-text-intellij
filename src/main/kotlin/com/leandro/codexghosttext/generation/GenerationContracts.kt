@@ -19,6 +19,13 @@ data class GenerationRequest(
     val documentText: String,
     val range: TextRange,
     val projectRoot: String,
+    /**
+     * The edited file's language and name, so a provider proposes code in the language of the
+     * file instead of guessing from the surrounding context. Both are empty only where no file is
+     * available; a provider then falls back to the nearby context exactly as before.
+     */
+    val language: String = "",
+    val fileName: String = "",
 )
 
 sealed interface GenerationResult {

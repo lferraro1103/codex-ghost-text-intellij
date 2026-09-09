@@ -10,6 +10,7 @@ import com.leandro.codexghosttext.generation.GenerationResult
 import com.leandro.codexghosttext.generation.LocalGenerationProvider
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
+import com.leandro.codexghosttext.preview.GhostLoadingIndicator
 import com.leandro.codexghosttext.preview.GhostPreviewService
 
 /** A diagnostic paired with the provider that was selected when it was checked. */
@@ -56,7 +57,10 @@ class ProviderRouterService private constructor(
             ProviderId.CODEX to project.getService(CodexGenerationProvider::class.java),
             ProviderId.CLAUDE to project.getService(ClaudeGenerationService::class.java),
         ),
-        cancelPreview = { project.getService(GhostPreviewService::class.java).cancel() },
+        cancelPreview = {
+            project.getService(GhostPreviewService::class.java).cancel()
+            project.getService(GhostLoadingIndicator::class.java).hide()
+        },
         notifySelection = { snapshot ->
             project.messageBus.syncPublisher(SELECTION_TOPIC).selectionChanged(snapshot)
         },

@@ -9,6 +9,7 @@ import com.leandro.codexghosttext.generation.GenerationResult
 import com.leandro.codexghosttext.generation.LocalGenerationProvider
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
+import com.leandro.codexghosttext.generation.SourceLanguage
 import java.lang.StringBuilder
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -45,9 +46,9 @@ class ClaudeGenerationService private constructor(
             val profile = processRunner.probe()
             if (!profile.isReady) return GenerationResult.Failure(profile.userMessage)
 
-            val prompt = buildPrompt(request.comment, request.documentText, request.range)
+            val prompt = buildPrompt(request)
             val savedSession = conversationState.sessionFor(request.projectRoot)
-            val first = generateOnce(profile, prompt, savedSession, request.projectRoot)
+            val first = generateOnce(profile, prompt, savedSession, request)
             if (first is ParsedProposal.Success) {
                 conversationState.remember(request.projectRoot, first.sessionId)
                 return GenerationResult.Success(first.code)
@@ -78,9 +79,9 @@ class ClaudeGenerationService private constructor(
         profile: ClaudeCapabilityProfile,
         prompt: String,
         sessionId: String?,
-        projectRoot: String,
+        request: GenerationRequest,
     ): ParsedProposal {
-        val workingDirectory = runCatching { Path.of(projectRoot) }.getOrNull()
+        val workingDirectory = runCatching { Path.of(request.projectRoot) }.getOrNull()
             ?: return ParsedProposal.Failure("El proyecto no tiene una carpeta válida para Claude.")
         val result = processRunner.run(profile, ClaudeProcessRequest(prompt, sessionId, workingDirectory))
         result.diagnostic?.let {
@@ -89,19 +90,20 @@ class ClaudeGenerationService private constructor(
         if (result.exitCode != 0 || result.stdoutTruncated || result.stderrTruncated) {
             return ParsedProposal.Failure(ProviderDiagnostic.PROCESS_FAILED.userMessage, mayRetryFresh = true)
         }
-        return ClaudeEnvelopeParser.parse(result.stdout)
+        return ClaudeEnvelopeParser.parse(result.stdout, request.language, request.fileName)
     }
 
-    private fun buildPrompt(comment: String, documentText: String, range: TextRange): String = """
+    private fun buildPrompt(request: GenerationRequest): String = """
         Devolvé únicamente código nuevo, sin explicación ni Markdown. Podés consultar los
         archivos del proyecto actual solo con herramientas de lectura si ese contexto es necesario.
         No ejecutes comandos, no navegues la web y no modifiques archivos.
+        ${SourceLanguage.instruction(request)}
 
         Comentario seleccionado:
-        $comment
+        ${request.comment}
 
         Contexto cercano:
-        ${documentText.nearbyWindow(range)}
+        ${request.documentText.nearbyWindow(request.range)}
     """.trimIndent()
 
     private sealed interface ParsedProposal {
@@ -129,10 +131,11 @@ class ClaudeGenerationService private constructor(
                 """int|uint|long|float|double|char|str|String|Int|Long|Double|Boolean|Float|Char|Any|Unit)\b.*|""" +
                 """[A-Za-z_$][\w$]*(?:[.<\[]|\s*\(|\s*[:=]|\s+[A-Za-z_$*&]).*)""",
         )
+        private val FENCE_TAG = Regex("[A-Za-z0-9+#._-]{0,20}")
         private val COMMENT_OR_ANNOTATION = Regex("""^\s*(?://|/\*|#|@\w)""")
         private const val SYNTAX_CHARACTERS = "(){}[];=<>:,"
 
-        fun parse(raw: String): ParsedProposal {
+        fun parse(raw: String, language: String, fileName: String): ParsedProposal {
             val root = runCatching { StrictJsonReader(raw).read() }.getOrNull() as? JsonValue.ObjectValue
                 ?: return ParsedProposal.Failure("Claude no devolvió una respuesta estructurada válida.")
             val sessionId = (root.values["session_id"] as? JsonValue.StringValue)?.value
@@ -148,9 +151,21 @@ class ClaudeGenerationService private constructor(
             val code = ((structured?.values?.takeIf { it.keys == setOf("code") }?.get("code") as? JsonValue.StringValue)?.value
                 ?: (root.values["result"] as? JsonValue.StringValue)?.value
                 ?: return ParsedProposal.Failure("Claude no devolvió código estructurado."))
-                .withoutCodeFence()
-            if (!code.isCodeOnlyProposal()) return ParsedProposal.Failure("Claude no devolvió una propuesta de código utilizable.")
-            return ParsedProposal.Success(code, sessionId)
+            val fenceTag = code.fenceTag()
+            if (fenceTag != null && SourceLanguage.fenceConflicts(fenceTag, language, fileName)) {
+                return ParsedProposal.Failure("Claude respondió en $fenceTag y el archivo no está en ese lenguaje.")
+            }
+            val unwrapped = code.withoutCodeFence()
+            if (!unwrapped.isCodeOnlyProposal()) return ParsedProposal.Failure("Claude no devolvió una propuesta de código utilizable.")
+            return ParsedProposal.Success(unwrapped, sessionId)
+        }
+
+        /** The language tag of a wrapping fence, when the answer is exactly one fenced block. */
+        private fun String.fenceTag(): String? {
+            val text = trim()
+            if (!text.startsWith("```") || !text.endsWith("```")) return null
+            val opening = text.indexOf('\n').takeIf { it > 0 } ?: return null
+            return text.substring(3, opening).trim().takeIf { it.matches(FENCE_TAG) && it.isNotEmpty() }
         }
 
         /**
@@ -164,7 +179,7 @@ class ClaudeGenerationService private constructor(
             val opening = text.indexOf('\n')
             if (opening < 0) return text
             // Only a language tag may follow the opening fence.
-            if (!text.substring(3, opening).trim().matches(Regex("[A-Za-z0-9+#._-]{0,20}"))) return text
+            if (!text.substring(3, opening).trim().matches(FENCE_TAG)) return text
             return text.substring(opening + 1, text.length - 3).trim()
         }
 

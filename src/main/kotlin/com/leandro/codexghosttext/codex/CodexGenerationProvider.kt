@@ -17,16 +17,15 @@ import com.leandro.codexghosttext.generation.ProviderId
  */
 @Service(Service.Level.PROJECT)
 class CodexGenerationProvider private constructor(
-    private val generate: (String, String, TextRange) -> GenerationResult,
+    // Named apart from the overridden member so the delegation cannot resolve back into itself.
+    private val generateProposal: (GenerationRequest) -> GenerationResult,
     private val availability: () -> CodexDiagnostic,
     private val cancel: () -> Unit,
     private val isGenerating: () -> Boolean,
     private val reset: () -> Unit,
 ) : LocalGenerationProvider {
     constructor(project: Project) : this(
-        generate = { comment, document, range ->
-            project.getService(CodexGenerationService::class.java).generate(comment, document, range)
-        },
+        generateProposal = { request -> project.getService(CodexGenerationService::class.java).generate(request) },
         availability = { project.getService(CodexAvailabilityService::class.java).check() },
         cancel = { project.getService(CodexGenerationService::class.java).cancel() },
         isGenerating = { project.getService(CodexGenerationService::class.java).isGenerating() },
@@ -34,7 +33,7 @@ class CodexGenerationProvider private constructor(
     )
 
     internal constructor(
-        generate: (String, String, TextRange) -> GenerationResult,
+        generate: (GenerationRequest) -> GenerationResult,
         availability: () -> CodexDiagnostic,
         cancel: () -> Unit,
         isGenerating: () -> Boolean,
@@ -60,7 +59,7 @@ class CodexGenerationProvider private constructor(
         if (diagnostic != CodexDiagnostic.CHATGPT_READY) {
             return GenerationResult.Failure(diagnostic.generationFailureMessage())
         }
-        return generate(request.comment, request.documentText, request.range)
+        return generateProposal(request)
     }
 
     override fun cancel() = cancel.invoke()
