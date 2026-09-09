@@ -114,6 +114,24 @@ class ClaudeGenerationService private constructor(
         private const val MAX_CODE_LINES = 80
         private val SESSION_ID = Regex("[A-Za-z0-9._:-]{1,512}")
 
+        /**
+         * A declaration, annotation, comment, or statement in the languages an IntelliJ-based IDE
+         * edits. The prose check above is what rejects an explanation; this only keeps a proposal
+         * that still reads like natural language out of the document.
+         */
+        private val CODE_FIRST_LINE = Regex(
+            """(?:@\w+.*|#.*|//.*|/\*.*|<[A-Za-z/!].*|[}\])].*|""" +
+                """(?:public|private|protected|internal|open|abstract|final|sealed|static|synchronized|""" +
+                """suspend|inline|override|operator|companion|fun|func|def|lambda|class|interface|object|""" +
+                """struct|enum|record|trait|impl|module|namespace|package|import|export|from|require|use|""" +
+                """val|var|let|const|function|async|await|return|yield|throw|new|delete|if|for|while|do|""" +
+                """switch|when|try|with|type|typedef|template|typename|auto|void|boolean|bool|byte|short|""" +
+                """int|uint|long|float|double|char|str|String|Int|Long|Double|Boolean|Float|Char|Any|Unit)\b.*|""" +
+                """[A-Za-z_$][\w$]*(?:[.<\[]|\s*\(|\s*[:=]|\s+[A-Za-z_$*&]).*)""",
+        )
+        private val COMMENT_OR_ANNOTATION = Regex("""^\s*(?://|/\*|#|@\w)""")
+        private const val SYNTAX_CHARACTERS = "(){}[];=<>:,"
+
         fun parse(raw: String): ParsedProposal {
             val root = runCatching { StrictJsonReader(raw).read() }.getOrNull() as? JsonValue.ObjectValue
                 ?: return ParsedProposal.Failure("Claude no devolvió una respuesta estructurada válida.")
@@ -127,20 +145,37 @@ class ClaudeGenerationService private constructor(
             if ((root.values["is_error"] as? JsonValue.LiteralValue)?.value == "true") {
                 return ParsedProposal.Failure("Claude informó un error al generar el código.")
             }
-            val code = (structured?.values?.takeIf { it.keys == setOf("code") }?.get("code") as? JsonValue.StringValue)?.value
+            val code = ((structured?.values?.takeIf { it.keys == setOf("code") }?.get("code") as? JsonValue.StringValue)?.value
                 ?: (root.values["result"] as? JsonValue.StringValue)?.value
-                ?: return ParsedProposal.Failure("Claude no devolvió código estructurado.")
+                ?: return ParsedProposal.Failure("Claude no devolvió código estructurado."))
+                .withoutCodeFence()
             if (!code.isCodeOnlyProposal()) return ParsedProposal.Failure("Claude no devolvió una propuesta de código utilizable.")
             return ParsedProposal.Success(code, sessionId)
+        }
+
+        /**
+         * Claude wraps a code-only answer in a Markdown fence often enough that rejecting the
+         * proposal would waste a usable generation. Exactly one wrapping fence is unwrapped; any
+         * other fence still fails the code-only check below, so no Markdown can reach the document.
+         */
+        private fun String.withoutCodeFence(): String {
+            val text = trim()
+            if (!text.startsWith("```") || !text.endsWith("```")) return text
+            val opening = text.indexOf('\n')
+            if (opening < 0) return text
+            // Only a language tag may follow the opening fence.
+            if (!text.substring(3, opening).trim().matches(Regex("[A-Za-z0-9+#._-]{0,20}"))) return text
+            return text.substring(opening + 1, text.length - 3).trim()
         }
 
         private fun String.isCodeOnlyProposal(): Boolean {
             if (isBlank() || length > MAX_CODE_CHARS || lines().size > MAX_CODE_LINES || contains("```")) return false
             val first = lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
             if (first.matches(Regex("(?i)^(voy|claro|sure|here|i |the |this |aqui|aquí|generar|implement).*$"))) return false
-            return first.matches(
-                Regex("(?:@\\w+|//.*|/\\*.*|(?:public|private|protected|internal|fun|class|interface|object|data\\s+class|sealed\\s+class|enum\\s+class|static|void|boolean|byte|short|int|long|float|double|char|String)\\b.*|[A-Za-z_]\\w*(?:[.<].*)?)"),
-            )
+            if (!first.matches(CODE_FIRST_LINE)) return false
+            // A sentence can also open with a keyword ("Return the sum of ..."), so an accepted
+            // line must carry syntax as well, unless it is a comment or an annotation.
+            return COMMENT_OR_ANNOTATION.containsMatchIn(first) || first.any { it in SYNTAX_CHARACTERS }
         }
     }
 }
