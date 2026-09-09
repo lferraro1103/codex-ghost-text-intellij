@@ -74,6 +74,8 @@ class CodexGenerationService(private val project: Project) : Disposable {
                 Generá únicamente el código nuevo que va inmediatamente debajo del comentario seleccionado.
                 ${SourceLanguage.instruction(request)}
 
+                ${SourceLanguage.projectSection(request)}
+
                 Comentario seleccionado:
                 ${request.comment}
 

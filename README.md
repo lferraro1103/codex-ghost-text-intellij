@@ -13,6 +13,7 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 - A generation spinner in the IDE status bar, and a loading placeholder under the selected comment while a provider works.
 - Multi-line translucent green preview, aligned to the comment indentation.
 - The request carries the edited file's language, and a proposal fenced as another language is rejected.
+- The request also names the project files the surrounding code resolves to, with their declarations (signatures, never bodies), so a proposal uses your own classes correctly instead of inventing them.
 - Accept with `|`; dismiss with `Esc`.
 - The document changes only after explicit acceptance.
 - Choose **Codex** or **Claude** from a persistent project-local selector in the status bar; if the selected CLI is not installed and the other one is, the plugin switches and says so.
@@ -70,7 +71,7 @@ Compatibility is checked from the security capabilities advertised by `claude --
 
 Codex and Claude receive the project folder as their working directory, so **the CLI itself can read project files the plugin never sent**: Claude through `Read`, `Glob`, and `Grep`, Codex through its read-only sandbox. That is what makes a proposal fit the surrounding code, and it is the agent's own decision, not something the plugin transmits.
 
-What the plugin transmits is bounded: the selected comment, nearby file context of up to 2,000 preceding and 4,000 following characters, the edited file's language and name, and — once per conversation — the project's content-root paths together with the instruction to verify project symbols instead of inventing them. No file contents beyond that window are ever sent by the plugin. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
+What the plugin transmits is bounded: the selected comment; nearby file context of up to 2,000 preceding and 4,000 following characters; the edited file's language and name; the relative paths of at most 8 project files the surrounding code resolves to, with a declaration-only rendering of each — signatures, never method bodies, comments, or literals — capped at 40 lines and 4,000 characters per file; and, once per conversation, the project's content-root paths with the instruction to verify project symbols instead of inventing them. Only files inside this project's own source roots are considered: the JDK, libraries, and anything outside a source root are never described. Declarations are sent once per provider conversation and not repeated, and no other file contents are ever sent by the plugin. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
 
 The session uses a read-only sandbox, `never` approval, disabled web search, and disabled plugins/tools. A proposal is cancelled if Codex attempts to modify a file or use a tool. The plugin never applies changes automatically and discards a response when its preview closes.
 
@@ -87,6 +88,8 @@ The session uses a read-only sandbox, `never` approval, disabled web search, and
 | `GhostLoadingIndicator` | Shows the loading placeholder under the comment while a request runs. |
 | `SourceLanguage` | Puts the file's language in the prompt and rejects a proposal fenced as another one. |
 | `ProjectContextService` | Builds the once-per-conversation project brief and the look-it-up instruction. |
+| `ProjectDependencyCollector` | Resolves the project files the code depends on and renders their declarations. |
+| `ConversationContextMemory` | Tracks what each provider conversation was already told, so nothing is resent. |
 | `CodeProposal` | The single definition of "this answer is insertable code", shared by both providers. |
 | `StrictJson` | The strict JSON reader both providers use to read CLI records. |
 | `CodexGhostTypedHandler` | Captures `|` before IntelliJ writes it and accepts the proposal. |
@@ -129,6 +132,7 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 - Indicador de generación en la barra de estado del IDE, y un placeholder de carga bajo el comentario seleccionado mientras el proveedor trabaja.
 - Vista previa multilínea verde y translúcida, alineada con la sangría del comentario.
 - La consulta lleva el lenguaje del archivo editado, y se rechaza una propuesta marcada como otro lenguaje.
+- La consulta también nombra los archivos del proyecto a los que resuelve el código de alrededor, con sus declaraciones (firmas, nunca cuerpos), para que la propuesta use tus clases correctamente en lugar de inventarlas.
 - Aceptación con `|`; cancelación con `Esc`.
 - El documento sólo cambia después de aceptar explícitamente.
 - Elegí **Codex** o **Claude** desde un selector persistente y local al proyecto en la barra de estado; si la CLI elegida no está instalada y la otra sí, el plugin cambia de proveedor y lo avisa.
@@ -186,7 +190,7 @@ La compatibilidad se comprueba mediante las capacidades de seguridad informadas 
 
 Codex y Claude reciben la carpeta del proyecto como directorio de trabajo, así que **la propia CLI puede leer archivos del proyecto que el plugin nunca envió**: Claude con `Read`, `Glob` y `Grep`, Codex con su sandbox de sólo lectura. Eso es lo que hace que la propuesta encaje con el código que la rodea, y es una decisión del agente, no algo que transmita el plugin.
 
-Lo que transmite el plugin está acotado: el comentario seleccionado, contexto cercano de hasta 2.000 caracteres anteriores y 4.000 posteriores, el lenguaje y el nombre del archivo editado y —una vez por conversación— las carpetas raíz del proyecto junto con la instrucción de verificar los símbolos del proyecto en lugar de inventarlos. El plugin nunca envía contenido de archivos fuera de esa ventana. Claude puede consultar archivos del proyecto únicamente mediante `Read`, `Glob` y `Grep`; no puede ejecutar comandos, editar archivos, navegar la web, usar agentes ni MCP/plugins.
+Lo que transmite el plugin está acotado: el comentario seleccionado; contexto cercano de hasta 2.000 caracteres anteriores y 4.000 posteriores; el lenguaje y el nombre del archivo editado; las rutas relativas de como máximo 8 archivos del proyecto a los que resuelve el código de alrededor, con una representación de sólo declaraciones de cada uno —firmas, nunca cuerpos de métodos, comentarios ni literales—, limitada a 40 líneas y 4.000 caracteres por archivo; y, una vez por conversación, las carpetas raíz del proyecto con la instrucción de verificar los símbolos del proyecto en lugar de inventarlos. Sólo se consideran archivos dentro de las carpetas de fuentes del propio proyecto: el JDK, las bibliotecas y cualquier cosa fuera de una carpeta de fuentes nunca se describen. Las declaraciones se envían una sola vez por conversación de cada proveedor y no se repiten, y el plugin no envía ningún otro contenido de archivos. Claude puede consultar archivos del proyecto únicamente mediante `Read`, `Glob` y `Grep`; no puede ejecutar comandos, editar archivos, navegar la web, usar agentes ni MCP/plugins.
 
 La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desactivada y plugins/herramientas desactivados. La propuesta se cancela si Codex intenta modificar un archivo o utilizar una herramienta. El plugin nunca aplica cambios automáticamente y descarta la respuesta cuando se cierra la vista previa.
 
@@ -203,6 +207,8 @@ La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desa
 | `GhostLoadingIndicator` | Muestra el placeholder de carga bajo el comentario mientras corre una consulta. |
 | `SourceLanguage` | Pone el lenguaje del archivo en el prompt y rechaza una propuesta marcada como otro. |
 | `ProjectContextService` | Arma el brief del proyecto, una vez por conversación, y la instrucción de verificar. |
+| `ProjectDependencyCollector` | Resuelve los archivos del proyecto de los que depende el código y arma sus declaraciones. |
+| `ConversationContextMemory` | Registra qué se le dijo ya a la conversación de cada proveedor, para no reenviarlo. |
 | `CodeProposal` | La única definición de «esta respuesta es código insertable», compartida por ambos proveedores. |
 | `StrictJson` | El lector JSON estricto que ambos proveedores usan para leer los registros de las CLI. |
 | `CodexGhostTypedHandler` | Captura `|` antes de que IntelliJ lo escriba y acepta la propuesta. |

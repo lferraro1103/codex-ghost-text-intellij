@@ -123,6 +123,8 @@ class ClaudeGenerationService private constructor(
         No ejecutes comandos, no navegues la web y no modifiques archivos.
         ${SourceLanguage.instruction(request)}
 
+        ${SourceLanguage.projectSection(request)}
+
         Comentario seleccionado:
         ${request.comment}
 

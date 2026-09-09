@@ -10,6 +10,8 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.leandro.codexghosttext.context.ConversationContextMemory
+import com.leandro.codexghosttext.context.ProjectContextGathering
 import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
 import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
@@ -69,8 +71,19 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 language = selectedComment.language,
                 fileName = selectedComment.fileName,
             )
+            val psiFile = event.getData(CommonDataKeys.PSI_FILE)
             ApplicationManager.getApplication().executeOnPooledThread {
-                val result = runCatching { dispatch.generate(request) }
+                // Resolved project context, gathered off the EDT under a read action that yields to
+                // the user's own edits. It is optional: an indexing IDE or a language without a
+                // structure view simply produces less context, never a failed request.
+                val dependencies = ProjectContextGathering.gather(project, psiFile, selectedComment.range)
+                val memory = project.getService(ConversationContextMemory::class.java)
+                val skeletons = memory.unsent(selectedProvider.providerId, dependencies.skeletons)
+                val enriched = request.copy(
+                    dependencyPaths = dependencies.paths,
+                    dependencySkeletons = skeletons,
+                )
+                val result = runCatching { dispatch.generate(enriched) }
                     .getOrElse { GenerationResult.Failure("Falló la generación local.") }
                 val failureDump = (result as? GenerationResult.Failure)?.let { failure ->
                     GenerationDiagnosticDump.write(
@@ -80,6 +93,9 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                         source = "generation",
                     )
                 }
+                // Only a proposal that came back proves the conversation received the
+                // declarations; otherwise they are offered again on the next request.
+                if (result is GenerationResult.Success) memory.remember(selectedProvider.providerId, skeletons)
                 ApplicationManager.getApplication().invokeLater {
                     generationStatus.hide(statusRequest)
                     if (!project.isDisposed) project.getService(GhostLoadingIndicator::class.java).hide()

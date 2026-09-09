@@ -26,6 +26,10 @@ data class GenerationRequest(
      */
     val language: String = "",
     val fileName: String = "",
+    /** Project files the surrounding code resolves to, as paths relative to the project root. */
+    val dependencyPaths: List<String> = emptyList(),
+    /** Declaration-only renderings of those files, already filtered to what this conversation lacks. */
+    val dependencySkeletons: List<String> = emptyList(),
 )
 
 sealed interface GenerationResult {

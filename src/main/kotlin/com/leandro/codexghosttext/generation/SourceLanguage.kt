@@ -7,6 +7,26 @@ package com.leandro.codexghosttext.generation
  * The nearby context alone is not a reliable hint: Claude answered a Kotlin file with JavaScript.
  */
 object SourceLanguage {
+    /**
+     * The resolved project context of one request. Paths are cheap and repeated freely; the
+     * declarations are only the ones this conversation has not been given yet.
+     */
+    fun projectSection(request: GenerationRequest): String = buildString {
+        if (request.dependencyPaths.isNotEmpty()) {
+            appendLine()
+            appendLine("Archivos del proyecto de los que depende este código:")
+            request.dependencyPaths.forEach { appendLine("- $it") }
+        }
+        if (request.dependencySkeletons.isNotEmpty()) {
+            appendLine()
+            appendLine("Declaraciones de esos archivos (sólo firmas, sin cuerpos):")
+            request.dependencySkeletons.forEach {
+                appendLine(it)
+                appendLine()
+            }
+        }
+    }.trimEnd()
+
     fun instruction(request: GenerationRequest): String = when {
         request.language.isBlank() -> ""
         request.fileName.isBlank() -> "El código debe ser ${request.language} válido."

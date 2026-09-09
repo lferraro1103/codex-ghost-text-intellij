@@ -18,6 +18,24 @@ class SourceLanguageTest {
     }
 
     @Test
+    fun `names the resolved project files and their declarations`() {
+        val section = SourceLanguage.projectSection(
+            request().copy(
+                dependencyPaths = listOf("src/main/java/Nodo.java"),
+                dependencySkeletons = listOf("// src/main/java/Nodo.java\nNodo(int)"),
+            ),
+        )
+
+        assertTrue(section.contains("- src/main/java/Nodo.java"))
+        assertTrue(section.contains("Nodo(int)"))
+    }
+
+    @Test
+    fun `says nothing when nothing was resolved`() {
+        assertEquals("", SourceLanguage.projectSection(request()))
+    }
+
+    @Test
     fun `rejects a fence that announces a different language than the edited file`() {
         assertTrue(SourceLanguage.fenceConflicts("javascript", "Kotlin", "Arbol.kt"))
         assertTrue(SourceLanguage.fenceConflicts("python", "JAVA", "Tree.java"))
