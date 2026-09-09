@@ -4,6 +4,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
+import com.leandro.codexghosttext.env.LocalCliEnvironment
 import com.leandro.codexghosttext.generation.GenerationResult
 import java.io.BufferedReader
 import java.io.BufferedWriter
@@ -112,9 +113,9 @@ class CodexGenerationService(private val project: Project) : Disposable {
                 // The app-server and its thread both start in this IntelliJ project's root.
                 // This gives Codex project context without embedding the whole project in a prompt.
                 directory(File(projectRoot))
-                environment().remove("CODEX_API_KEY")
-                environment().remove("OPENAI_API_KEY")
-                environment().remove("CODEX_ACCESS_TOKEN")
+                // The login-shell environment, so a desktop-launched IDE still gives Codex the
+                // interpreter and tools it expects. Credentials are removed after it is applied.
+                LocalCliEnvironment.applyTo(this, codexCredentialEnvironmentNames)
             }.start()
         }.getOrNull() ?: return@synchronized null
         val reader = process.inputStream.bufferedReader()

@@ -16,7 +16,15 @@ class ClaudeProcessRunnerTest {
         val report = locator.diagnosticReport()
 
         assertTrue(report.contains("candidate[common]=<home>/.local/bin/claude status=missing"))
+        assertTrue(report.contains("candidate[common]=/opt/homebrew/bin/claude"))
         assertTrue(report.contains("pathEntryCount=0"))
+    }
+
+    @Test
+    fun `locator diagnoses Claude Code's own local install directory`() {
+        val locator = PathClaudeExecutableLocator(path = "", userHome = "/Users/example", osName = "Mac OS X")
+
+        assertTrue(locator.diagnosticReport().contains("candidate[provider]=<home>/.claude/local/claude"))
     }
 
     @Test

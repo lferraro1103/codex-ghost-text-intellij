@@ -1,5 +1,7 @@
 package com.leandro.codexghosttext.claude
 
+import com.leandro.codexghosttext.env.LocalCliEnvironment
+import com.leandro.codexghosttext.env.LocalCliExecutableSearch
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
@@ -115,13 +117,15 @@ internal interface ClaudeCommandExecutor {
 
 /** Locates only a regular, executable local CLI file; it never invokes a shell or login command. */
 internal class PathClaudeExecutableLocator(
-    private val path: String = System.getenv("PATH").orEmpty(),
+    // The login-shell PATH, not the IDE process PATH: a desktop-launched IDE does not inherit the
+    // directories where Homebrew, npm, and version managers install `claude`.
+    private val path: String = LocalCliEnvironment.searchPath(),
     private val userHome: String = System.getProperty("user.home").orEmpty(),
     private val osName: String = System.getProperty("os.name").orEmpty(),
 ) : ClaudeExecutableLocator {
     override fun find(): Path? {
         return candidates().firstOrNull { candidate ->
-            Files.isRegularFile(candidate.path) && Files.isExecutable(candidate.path)
+            LocalCliExecutableSearch.isExecutableFile(candidate.path)
         }?.path
     }
 
@@ -132,7 +136,7 @@ internal class PathClaudeExecutableLocator(
         appendLine("candidateCount=${candidates.size}")
         candidates.take(MAX_DIAGNOSTIC_CANDIDATES).forEach { candidate ->
             val state = when {
-                Files.isRegularFile(candidate.path) && Files.isExecutable(candidate.path) -> "executable"
+                LocalCliExecutableSearch.isExecutableFile(candidate.path) -> "executable"
                 Files.isRegularFile(candidate.path) -> "not-executable"
                 Files.exists(candidate.path) -> "not-a-regular-file"
                 else -> "missing"
@@ -142,59 +146,19 @@ internal class PathClaudeExecutableLocator(
         if (candidates.size > MAX_DIAGNOSTIC_CANDIDATES) appendLine("candidateList=truncated")
     }.trimEnd()
 
-    private fun candidates(): List<Candidate> {
-        val names = executableNames()
-        val fromPath = path.split(java.io.File.pathSeparatorChar)
-            .asSequence()
-            .filter(String::isNotBlank)
-            .mapNotNull { directory -> runCatching { Path.of(directory) }.getOrNull() }
-            .flatMap { directory -> names.asSequence().map { name -> Candidate("PATH", directory.resolve(name)) } }
-        val common = commonDirectories()
-            .asSequence()
-            .flatMap { directory -> names.asSequence().map { name -> Candidate("common", directory.resolve(name)) } }
-        val nvm = nvmDirectories()
-            .asSequence()
-            .flatMap { directory -> names.asSequence().map { name -> Candidate("nvm", directory.resolve(name)) } }
-        return (fromPath + common + nvm).distinctBy { it.path.normalize().toString() }.toList()
-    }
+    private fun candidates(): List<LocalCliExecutableSearch.Candidate> = LocalCliExecutableSearch.candidates(
+        names = executableNames(),
+        path = path,
+        userHome = userHome,
+        osName = osName,
+        providerDirectories = PROVIDER_DIRECTORIES,
+    )
 
-    private fun executableNames(): List<String> = if (osName.startsWith("Windows", ignoreCase = true)) {
+    private fun executableNames(): List<String> = if (LocalCliExecutableSearch.isWindows(osName)) {
         // A batch shim would introduce cmd.exe as an unreviewed shell layer.
         listOf("claude.exe")
     } else {
         listOf("claude")
-    }
-
-    private fun commonDirectories(): List<Path> = buildList {
-        if (userHome.isNotBlank()) {
-            val home = runCatching { Path.of(userHome) }.getOrNull()
-            if (home != null) addAll(
-                listOf(
-                    home.resolve(".local/bin"),
-                    home.resolve(".npm-global/bin"),
-                    home.resolve(".npm/bin"),
-                    home.resolve(".npm-packages/bin"),
-                    home.resolve(".volta/bin"),
-                    home.resolve(".yarn/bin"),
-                    home.resolve(".config/yarn/global/node_modules/.bin"),
-                    home.resolve(".bun/bin"),
-                    home.resolve(".local/share/pnpm"),
-                    home.resolve("Library/pnpm"),
-                ),
-            )
-        }
-        if (!osName.startsWith("Windows", ignoreCase = true)) addAll(listOf(Path.of("/usr/local/bin"), Path.of("/opt/homebrew/bin")))
-    }
-
-    private fun nvmDirectories(): List<Path> {
-        if (userHome.isBlank() || osName.startsWith("Windows", ignoreCase = true)) return emptyList()
-        val root = runCatching { Path.of(userHome, ".nvm", "versions", "node") }.getOrNull() ?: return emptyList()
-        if (!Files.isDirectory(root)) return emptyList()
-        return runCatching {
-            Files.list(root).use { versions ->
-                versions.filter(Files::isDirectory).map { it.resolve("bin") }.toList()
-            }
-        }.getOrDefault(emptyList())
     }
 
     private fun displayPath(path: Path): String {
@@ -210,12 +174,13 @@ internal class PathClaudeExecutableLocator(
     }
 
     private fun displayPathText(path: Path): String = path.toAbsolutePath().normalize().toString()
-        .let { value -> if (osName.startsWith("Windows", ignoreCase = true)) value else value.replace('\\', '/') }
-
-    private data class Candidate(val source: String, val path: Path)
+        .let { value -> if (LocalCliExecutableSearch.isWindows(osName)) value else value.replace('\\', '/') }
 
     private companion object {
         const val MAX_DIAGNOSTIC_CANDIDATES = 48
+
+        /** Claude Code's own local installs, which are outside every package-manager directory. */
+        val PROVIDER_DIRECTORIES = listOf(".claude/local", ".claude/bin")
     }
 }
 
@@ -234,7 +199,10 @@ internal class JdkClaudeCommandExecutor : ClaudeCommandExecutor {
         val process = try {
             ProcessBuilder(listOf(command.executable.toString()) + command.arguments).apply {
                 directory(command.workingDirectory.toFile())
-                environment().apply { command.environmentRemovals.forEach(::remove) }
+                // A Node-based install of the CLI needs its interpreter, which a desktop-launched
+                // IDE does not have on PATH. Credentials are removed after the shell environment
+                // is applied, so a key exported by a shell profile is dropped as well.
+                LocalCliEnvironment.applyTo(this, command.environmentRemovals)
             }.start()
         } catch (error: Exception) {
             return ClaudeCommandResult(stderr = error.javaClass.simpleName, exitCode = -1)

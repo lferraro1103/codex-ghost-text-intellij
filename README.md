@@ -25,6 +25,11 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 - [Codex CLI](https://developers.openai.com/codex/cli/) installed and available as `codex` on `PATH` (Windows also detects the Codex installation under `LOCALAPPDATA`).
 - A ChatGPT account with Codex access, logged in locally.
 
+On macOS and Linux an IDE started from the Dock, Finder, Spotlight, or a desktop launcher does
+not inherit the shell `PATH`. Both providers are therefore resolved and launched with the
+login-shell environment, plus the usual Homebrew, MacPorts, npm, nvm, pnpm, bun, and
+version-manager shim directories, so no IDE-specific `PATH` configuration is required.
+
 ### Installation
 
 1. Download the ZIP from the [latest release](../../releases/latest).
@@ -88,6 +93,13 @@ The project uses Kotlin, Java 21, and Gradle with the IntelliJ Platform Gradle P
 .\gradlew.bat test --no-daemon
 ```
 
+On macOS and Linux:
+
+```bash
+./gradlew buildPlugin --no-daemon
+./gradlew test --no-daemon
+```
+
 The ZIP is written to `build/distributions/codex-ghost-text-<version>.zip`.
 
 ### License
@@ -120,6 +132,11 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 - IntelliJ IDEA 2025.3 (build 253) o posterior. El mismo ZIP se compila contra 2025.3 y se verifica contra 2026.1 y 2026.2.
 - [Codex CLI](https://developers.openai.com/codex/cli/) instalado y disponible como `codex` en `PATH` (Windows también detecta la instalación de Codex en `LOCALAPPDATA`).
 - Una cuenta de ChatGPT con acceso a Codex e inicio de sesión local.
+
+En macOS y Linux, un IDE abierto desde el Dock, Finder, Spotlight o un lanzador de escritorio no
+hereda el `PATH` de la shell. Por eso ambos proveedores se resuelven y se ejecutan con el entorno
+de la shell de login, más los directorios habituales de Homebrew, MacPorts, npm, nvm, pnpm, bun y
+los shims de los gestores de versiones: no hace falta configurar el `PATH` del IDE.
 
 ### Instalación
 
@@ -182,6 +199,13 @@ El proyecto usa Kotlin, Java 21 y Gradle con IntelliJ Platform Gradle Plugin.
 ```powershell
 .\gradlew.bat buildPlugin --no-daemon
 .\gradlew.bat test --no-daemon
+```
+
+En macOS y Linux:
+
+```bash
+./gradlew buildPlugin --no-daemon
+./gradlew test --no-daemon
 ```
 
 El ZIP queda en `build/distributions/codex-ghost-text-<versión>.zip`.

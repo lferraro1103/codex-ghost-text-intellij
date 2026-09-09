@@ -2,9 +2,10 @@ package com.leandro.codexghosttext.codex
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
+import com.leandro.codexghosttext.env.LocalCliEnvironment
+import com.leandro.codexghosttext.env.LocalCliExecutableSearch
 import java.io.BufferedReader
 import java.io.BufferedWriter
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -24,11 +25,7 @@ class CodexAvailabilityService : Disposable {
 
         return try {
             process = ProcessBuilder(executable.toString(), "app-server", "--listen", "stdio://")
-                .apply {
-                    environment().remove("CODEX_API_KEY")
-                    environment().remove("OPENAI_API_KEY")
-                    environment().remove("CODEX_ACCESS_TOKEN")
-                }
+                .apply { LocalCliEnvironment.applyTo(this, codexCredentialEnvironmentNames) }
                 .start()
             activeProcess = process
             process.discardErrorOutput()
@@ -75,6 +72,13 @@ class CodexAvailabilityService : Disposable {
     }
 }
 
+/** Removed from every Codex subprocess so the plugin cannot silently switch to API billing. */
+internal val codexCredentialEnvironmentNames: Set<String> = setOf(
+    "CODEX_API_KEY",
+    "OPENAI_API_KEY",
+    "CODEX_ACCESS_TOKEN",
+)
+
 enum class CodexDiagnostic {
     CHATGPT_READY,
     MISSING_EXECUTABLE,
@@ -94,6 +98,7 @@ internal object CodexProtocol {
     private const val RESPONSE_TIMEOUT_MILLIS = 8_000L
     private val methodPattern = Regex("\\\"method\\\"\\s*:")
     private val accountTypePattern = Regex("\\\"type\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+    private val nullAccountPattern = Regex("^\\\"account\\\"\\s*:\\s*null")
     private val usedPercentPattern = Regex("\\\"usedPercent\\\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)")
 
     fun responseForId(reader: BufferedReader, id: Int): String? {
@@ -126,10 +131,15 @@ internal object CodexProtocol {
 
     fun classifyAccount(response: String): CodexDiagnostic {
         if (!response.contains("\"result\"")) return CodexDiagnostic.CONNECTION_FAILED
-        if (Regex("\\\"requiresOpenaiAuth\\\"\\s*:\\s*true").containsMatchIn(response)) {
-            return CodexDiagnostic.LOGIN_REQUIRED
-        }
-        val accountType = accountTypePattern.find(response)?.groupValues?.get(1)?.lowercase()
+        // `requiresOpenaiAuth` describes the deployment, not the session: current Codex releases
+        // report it as true for a fully logged-in ChatGPT account, so the account object is the
+        // only login signal. An absent or null account still means login is required.
+        val account = response.indexOf("\"account\"")
+            .takeIf { it >= 0 }
+            ?.let { response.substring(it) }
+            ?.takeUnless { nullAccountPattern.containsMatchIn(it) }
+            ?: return CodexDiagnostic.LOGIN_REQUIRED
+        val accountType = accountTypePattern.find(account)?.groupValues?.get(1)?.lowercase()
             ?: return CodexDiagnostic.LOGIN_REQUIRED
         return if (accountType == "chatgpt") {
             CodexDiagnostic.CHATGPT_READY
@@ -143,22 +153,24 @@ internal object CodexProtocol {
 }
 
 internal object CodexExecutableLocator {
+    /** Codex's own native install directory, which is outside every package-manager directory. */
+    private val providerDirectories = listOf(".codex/bin")
+
     fun find(
-        path: String = System.getenv("PATH").orEmpty(),
+        // The login-shell PATH, not the IDE process PATH: a desktop-launched IDE does not inherit
+        // the directories where Homebrew, npm, and version managers install `codex`.
+        path: String = LocalCliEnvironment.searchPath(),
         localAppData: String? = System.getenv("LOCALAPPDATA"),
+        userHome: String = System.getProperty("user.home").orEmpty(),
+        osName: String = System.getProperty("os.name").orEmpty(),
     ): Path? {
-        val executableNames = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+        val executableNames = if (LocalCliExecutableSearch.isWindows(osName)) {
             listOf("codex.exe")
         } else {
             listOf("codex")
         }
 
-        path.split(File.pathSeparatorChar)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .mapNotNull { directory -> runCatching { Path.of(directory) }.getOrNull() }
-            .flatMap { directory -> executableNames.asSequence().map(directory::resolve) }
-            .firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
+        LocalCliExecutableSearch.find(executableNames, path, userHome, osName, providerDirectories)
             ?.let { return it }
 
         val nativeRoot = localAppData?.let { runCatching { Path.of(it, "OpenAI", "Codex", "bin") }.getOrNull() }
