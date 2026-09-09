@@ -26,8 +26,9 @@ interface ClaudeProcessRunner {
 
     companion object {
         /**
-         * These flags are verified from the installed executable itself. A numeric release is
-         * deliberately not used as a proxy: Claude Code's packaging/versioning varies by channel.
+         * Only flags that enforce non-interactive, read-only execution are required. A numeric
+         * release is deliberately not used as a proxy: packaging varies by channel and Claude's
+         * own documentation warns that --help does not list every accepted flag.
          */
         val requiredCapabilityFlags = setOf(
             "--print",
@@ -36,9 +37,11 @@ interface ClaudeProcessRunner {
             "--allowed-tools",
             "--disallowed-tools",
             "--permission-mode",
-            "--max-turns",
             "--resume",
         )
+
+        /** Optional execution bounds are used when the installed CLI advertises them. */
+        val optionalCapabilityFlags = setOf("--max-turns")
     }
 }
 
@@ -327,7 +330,8 @@ internal class DefaultClaudeProcessRunner(
         help.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
         if (help.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.HELP_COMMAND_FAILED)
         val helpText = "${help.stdout}\n${help.stderr}"
-        val supported = ClaudeProcessRunner.requiredCapabilityFlags.filterTo(linkedSetOf()) { capability ->
+        val knownCapabilities = ClaudeProcessRunner.requiredCapabilityFlags + ClaudeProcessRunner.optionalCapabilityFlags
+        val supported = knownCapabilities.filterTo(linkedSetOf()) { capability ->
             CAPABILITY_ALIASES.getValue(capability).any(helpText::contains)
         }
         if (!supported.containsAll(ClaudeProcessRunner.requiredCapabilityFlags)) {
@@ -371,9 +375,11 @@ internal class DefaultClaudeProcessRunner(
                 add("--permission-mode")
                 // With dontAsk, anything outside the explicit tool surface is denied headlessly.
                 add("dontAsk")
-                add("--max-turns")
-                // Reading project files may require several tool/result turns before final code.
-                add("5")
+                if ("--max-turns" in profile.supportedFlags) {
+                    add("--max-turns")
+                    // Reading project files may require several tool/result turns before final code.
+                    add("5")
+                }
                 request.resumeSessionId?.takeIf(String::isNotBlank)?.let { sessionId ->
                     add("--resume")
                     add(sessionId)

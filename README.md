@@ -58,7 +58,7 @@ It reuses the Codex CLI login, normally configured with `codex login`. As an add
 
 The plugin runs the locally installed `claude` executable directly and reuses its stored Claude Code login. Authenticate outside IntelliJ with `claude auth login`; verify it with `claude auth status`. No Anthropic API key is requested or stored.
 
-Compatibility is checked from `claude --help` capabilities instead of a hard-coded version number. Generation uses print-mode JSON, restricts built-in tools to `Read`, `Glob`, and `Grep`, denies every MCP tool, and uses `dontAsk` so anything outside that surface is rejected without an interactive prompt.
+Compatibility is checked from the security capabilities advertised by `claude --help` instead of a hard-coded version number. Generation uses print-mode JSON, restricts built-in tools to `Read`, `Glob`, and `Grep`, denies every MCP tool, and uses `dontAsk` so anything outside that surface is rejected without an interactive prompt. `--max-turns` is an optional execution bound because some compatible Claude releases accept it without listing it in help, while others do not expose it.
 
 ### Privacy and safety
 
@@ -154,7 +154,7 @@ Reutiliza el inicio de sesión de Codex CLI, normalmente configurado con `codex 
 
 El plugin ejecuta directamente el binario local `claude` y reutiliza su sesión guardada de Claude Code. Iniciá sesión fuera de IntelliJ con `claude auth login`; comprobala con `claude auth status`. El plugin no solicita ni guarda una API key de Anthropic.
 
-La compatibilidad se comprueba mediante las capacidades informadas por `claude --help`, no con un número de versión fijo. La generación usa JSON en modo print, limita las herramientas integradas a `Read`, `Glob` y `Grep`, bloquea todas las herramientas MCP y usa `dontAsk` para rechazar sin interacción cualquier capacidad ajena a esa lista.
+La compatibilidad se comprueba mediante las capacidades de seguridad informadas por `claude --help`, no con un número de versión fijo. La generación usa JSON en modo print, limita las herramientas integradas a `Read`, `Glob` y `Grep`, bloquea todas las herramientas MCP y usa `dontAsk` para rechazar sin interacción cualquier capacidad ajena a esa lista. `--max-turns` es un límite opcional porque algunas versiones compatibles de Claude lo aceptan sin mostrarlo en la ayuda y otras no lo exponen.
 
 ### Privacidad y seguridad
 

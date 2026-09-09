@@ -53,6 +53,28 @@ class ClaudeAvailabilityTest {
     }
 
     @Test
+    fun `does not reject Claude 2 1 205 when help omits optional max turns`() {
+        val executable = Path.of("/opt/homebrew/bin/claude")
+        val advertised = ClaudeProcessRunner.requiredCapabilityFlags.joinToString(" ")
+        val runner = DefaultClaudeProcessRunner(
+            StaticClaudeExecutableLocator(executable),
+            RecordingClaudeCommandExecutor(
+                ClaudeCommandResult(stdout = "2.1.205", exitCode = 0),
+                ClaudeCommandResult(stdout = advertised, exitCode = 0),
+                ClaudeCommandResult(stdout = "{\"loggedIn\":true}", exitCode = 0),
+            ),
+            Path.of("/tmp/plugin-neutral"),
+        )
+
+        val profile = runner.probe()
+
+        assertEquals(ProviderDiagnostic.READY, profile.diagnostic)
+        assertTrue(profile.isReady)
+        assertTrue(profile.missingFlags.isEmpty())
+        assertFalse("--max-turns" in profile.supportedFlags)
+    }
+
+    @Test
     fun `keeps each unavailable capability failure actionable and never launches login`() {
         val executable = Path.of("C:/tools/claude.exe")
 

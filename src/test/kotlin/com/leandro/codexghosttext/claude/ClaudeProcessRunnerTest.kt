@@ -50,7 +50,9 @@ class ClaudeProcessRunnerTest {
         val projectRoot = "C:/work/private-project"
         val executor = RecordingClaudeCommandExecutor(
             ClaudeCommandResult(stdout = "2.1.259"),
-            ClaudeCommandResult(stdout = ClaudeProcessRunner.requiredCapabilityFlags.joinToString(" ")),
+            ClaudeCommandResult(
+                stdout = (ClaudeProcessRunner.requiredCapabilityFlags + ClaudeProcessRunner.optionalCapabilityFlags).joinToString(" "),
+            ),
             ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
             ClaudeCommandResult(stdout = "{\"structured_output\":{\"code\":\"fun sample() = Unit\"}}"),
         )
@@ -77,6 +79,26 @@ class ClaudeProcessRunnerTest {
         assertTrue(command.timeoutMillis > 0)
         assertTrue(command.stdoutLimitBytes > 0)
         assertTrue(command.stderrLimitBytes > 0)
+    }
+
+    @Test
+    fun `generation omits optional max turns when the installed CLI does not advertise it`() {
+        val executor = RecordingClaudeCommandExecutor(
+            ClaudeCommandResult(stdout = "2.1.205"),
+            ClaudeCommandResult(stdout = ClaudeProcessRunner.requiredCapabilityFlags.joinToString(" ")),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
+            ClaudeCommandResult(stdout = "{\"result\":\"fun sample() = Unit\"}"),
+        )
+        val runner = DefaultClaudeProcessRunner(
+            StaticClaudeExecutableLocator(Path.of("/opt/homebrew/bin/claude")),
+            executor,
+            Path.of("/tmp/plugin-neutral"),
+        )
+
+        val result = runner.run(runner.probe(), ClaudeProcessRequest("// generar", null, Path.of("/tmp/project")))
+
+        assertNull(result.diagnostic)
+        assertFalse("--max-turns" in executor.commands.last().arguments)
     }
 
     @Test
