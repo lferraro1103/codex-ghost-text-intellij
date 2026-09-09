@@ -16,6 +16,9 @@ class GenerationDiagnosticDumpTest {
         )
 
         assertTrue(dump.contains("provider=CLAUDE"))
+        assertTrue(dump.contains("claudeProbeDiagnostic="))
+        assertTrue(dump.contains("claudeSupportedCapabilities="))
+        assertTrue(dump.contains("claudeMissingCapabilities="))
         assertTrue(dump.contains("failure=No encontré la CLI; token=<redacted>"))
         assertTrue(dump.contains("projectRoot=C:/work/sample"))
         assertFalse(dump.contains("super-secret-value"))

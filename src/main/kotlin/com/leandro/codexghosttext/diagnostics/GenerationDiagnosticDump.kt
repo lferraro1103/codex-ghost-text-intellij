@@ -1,9 +1,8 @@
 package com.leandro.codexghosttext.diagnostics
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.extensions.PluginId
+import com.leandro.codexghosttext.claude.DefaultClaudeProcessRunner
 import com.leandro.codexghosttext.claude.PathClaudeExecutableLocator
 import com.leandro.codexghosttext.codex.CodexExecutableLocator
 import com.leandro.codexghosttext.generation.ProviderId
@@ -15,7 +14,18 @@ import java.util.UUID
 
 /** Writes a small, shareable failure report without prompts, source code, PATH, or credentials. */
 internal object GenerationDiagnosticDump {
-    private const val PLUGIN_ID = "com.leandro.codexghosttext"
+    private val pluginVersion: String by lazy {
+        GenerationDiagnosticDump::class.java.classLoader
+            .getResourceAsStream("codex-ghost-text-version.properties")
+            ?.bufferedReader()
+            ?.useLines { lines ->
+                lines.firstOrNull { it.startsWith("pluginVersion=") }
+                    ?.substringAfter('=')
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+            }
+            ?: "unknown"
+    }
 
     fun write(
         project: Project,
@@ -39,7 +49,7 @@ internal object GenerationDiagnosticDump {
     ): String = buildString {
         appendLine("Codex Ghost Text diagnostic dump")
         appendLine("timestamp=${DateTimeFormatter.ISO_INSTANT.format(Instant.now())}")
-        appendLine("pluginVersion=${PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version ?: "unknown"}")
+        appendLine("pluginVersion=$pluginVersion")
         appendLine("provider=$providerId")
         appendLine("source=${sanitize(source)}")
         appendLine("failure=${sanitize(failureMessage)}")
@@ -51,6 +61,13 @@ internal object GenerationDiagnosticDump {
         appendLine("claudeExecutable=${claudeLocator.find()?.toString() ?: "<not found>"}")
         appendLine("claudeLookup:")
         appendLine(claudeLocator.diagnosticReport().prependIndent("  "))
+        if (providerId == ProviderId.CLAUDE) {
+            val claudeProfile = DefaultClaudeProcessRunner().probe()
+            appendLine("claudeProbeDiagnostic=${claudeProfile.diagnostic}")
+            appendLine("claudeVersion=${claudeProfile.version ?: "<unavailable>"}")
+            appendLine("claudeSupportedCapabilities=${claudeProfile.supportedFlags.sorted().joinToString(",").ifBlank { "<none>" }}")
+            appendLine("claudeMissingCapabilities=${claudeProfile.missingFlags.sorted().joinToString(",").ifBlank { "<none>" }}")
+        }
         appendLine("redaction=No source code, prompts, PATH values, account data, authentication tokens, or CLI output are included.")
     }
 

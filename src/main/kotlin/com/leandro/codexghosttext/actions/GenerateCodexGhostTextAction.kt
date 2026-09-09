@@ -61,6 +61,14 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val result = runCatching { dispatch.generate(request) }
                     .getOrElse { GenerationResult.Failure("Falló la generación local.") }
+                val failureDump = (result as? GenerationResult.Failure)?.let { failure ->
+                    GenerationDiagnosticDump.write(
+                        project,
+                        selectedProvider.providerId,
+                        failure.message,
+                        source = "generation",
+                    )
+                }
                 ApplicationManager.getApplication().invokeLater {
                     generationStatus.hide(statusRequest)
                     // The selected comment is only input to the request. The user can navigate
@@ -75,15 +83,9 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                                 .createNotification("No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING).notify(project)
                         }
                         is GenerationResult.Failure -> {
-                            val dump = GenerationDiagnosticDump.write(
-                                project,
-                                selectedProvider.providerId,
-                                result.message,
-                                source = "generation",
-                            )
                             val message = buildString {
                                 append(result.message)
-                                dump?.let { append("\nDiagnóstico guardado en: $it") }
+                                failureDump?.let { append("\nDiagnóstico guardado en: $it") }
                             }
                             NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
                                 .createNotification(message, NotificationType.WARNING).notify(project)

@@ -71,7 +71,7 @@ class ProviderAwareActionsTest {
         assertEquals(1, codex.availabilityChecks)
         assertEquals(1, claude.availabilityChecks)
         assertEquals(ProviderId.CLAUDE, state.selectedProvider())
-        assertTrue(ProviderActionFeedback.messageFor(claudeCheck).contains("modo seguro"))
+        assertTrue(ProviderActionFeedback.messageFor(claudeCheck).contains("lectura segura"))
     }
 
     @Test
@@ -114,7 +114,7 @@ class ProviderAwareActionsTest {
         )
         assertTrue(
             ProviderActionFeedback.messageFor(SelectedProviderAvailability(ProviderId.CLAUDE, ProviderDiagnostic.LOGIN_REQUIRED))
-                .contains("claude login"),
+                .contains("claude auth login"),
         )
     }
 

@@ -20,14 +20,14 @@ class CheckCodexConnectionAction : DumbAwareAction() {
         ApplicationManager.getApplication().executeOnPooledThread {
             val availability = SelectedProviderActions(project.getService(ProviderRouterService::class.java))
                 .checkSelectedAvailability()
+            val message = ProviderActionFeedback.messageFor(availability)
+            val dump = if (!availability.diagnostic.isReady) {
+                GenerationDiagnosticDump.write(project, availability.providerId, message, source = "connection-check")
+            } else {
+                null
+            }
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
-                val message = ProviderActionFeedback.messageFor(availability)
-                val dump = if (!availability.diagnostic.isReady) {
-                    GenerationDiagnosticDump.write(project, availability.providerId, message, source = "connection-check")
-                } else {
-                    null
-                }
                 val messageWithDump = buildString {
                     append(message)
                     dump?.let { append("\nDiagnóstico guardado en: $it") }
@@ -80,10 +80,10 @@ internal object ProviderActionFeedback {
         ProviderDiagnostic.VERSION_UNPARSEABLE,
         ProviderDiagnostic.VERSION_COMMAND_FAILED -> "No pude comprobar la versión de Claude. Actualizá Claude y volvé a intentar."
         ProviderDiagnostic.HELP_COMMAND_FAILED,
-        ProviderDiagnostic.UNSAFE_CAPABILITIES -> "Claude no admite el modo seguro sin herramientas requerido por el plugin."
-        ProviderDiagnostic.LOGIN_REQUIRED -> "Claude requiere inicio de sesión. Ejecutá `claude login` fuera del IDE y volvé a intentar."
+        ProviderDiagnostic.UNSAFE_CAPABILITIES -> "A Claude le faltan opciones necesarias para limitarlo a lectura segura. Revisá el dump de diagnóstico."
+        ProviderDiagnostic.LOGIN_REQUIRED -> "Claude requiere inicio de sesión. Ejecutá `claude auth login` fuera del IDE y volvé a intentar."
         ProviderDiagnostic.AUTH_STATUS_MALFORMED,
-        ProviderDiagnostic.AUTH_STATUS_FAILED -> "No pude comprobar la sesión local de Claude. Ejecutá `claude login` y volvé a intentar."
+        ProviderDiagnostic.AUTH_STATUS_FAILED -> "No pude comprobar la sesión local de Claude. Ejecutá `claude auth status` y `claude auth login` fuera del IDE."
         ProviderDiagnostic.QUOTA_EXHAUSTED -> "La cuota de Claude está agotada. Esperá al próximo reinicio de cuota y volvé a intentar."
         else -> "No pude comprobar Claude local. Verificá su instalación y volvé a intentar."
     }

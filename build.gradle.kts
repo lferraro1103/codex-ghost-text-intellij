@@ -30,6 +30,12 @@ kotlin {
     jvmToolchain(providers.gradleProperty("javaVersion").get().toInt())
 }
 
+tasks.processResources {
+    filesMatching("codex-ghost-text-version.properties") {
+        expand("pluginVersion" to project.version)
+    }
+}
+
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {

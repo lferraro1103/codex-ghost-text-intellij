@@ -34,7 +34,7 @@ enum class ProviderDiagnostic(val isReady: Boolean, val userMessage: String) {
     VERSION_UNPARSEABLE(false, "No pude verificar la versión instalada."),
     VERSION_COMMAND_FAILED(false, "La CLI no pudo informar su versión."),
     HELP_COMMAND_FAILED(false, "La CLI no pudo informar sus capacidades."),
-    UNSAFE_CAPABILITIES(false, "La CLI no admite el modo seguro sin herramientas requerido."),
+    UNSAFE_CAPABILITIES(false, "La CLI instalada no ofrece todas las capacidades seguras requeridas."),
     LOGIN_REQUIRED(false, "Iniciá sesión en la CLI local antes de generar."),
     AUTH_STATUS_MALFORMED(false, "La CLI devolvió un estado de sesión no verificable."),
     AUTH_STATUS_FAILED(false, "No pude comprobar el estado de sesión de la CLI."),

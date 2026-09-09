@@ -9,6 +9,27 @@ import java.nio.file.Path
 
 class ClaudeAvailabilityTest {
     @Test
+    fun `recognizes documented short and camel case capability aliases from either help stream`() {
+        val executable = Path.of("C:/tools/claude.exe")
+        val help = "-p --output-format --tools --allowedTools --disallowedTools --permission-mode --max-turns -r"
+        val runner = DefaultClaudeProcessRunner(
+            StaticClaudeExecutableLocator(executable),
+            RecordingClaudeCommandExecutor(
+                ClaudeCommandResult(stdout = "Claude Code 2.1.100", exitCode = 0),
+                ClaudeCommandResult(stderr = help, exitCode = 0),
+                ClaudeCommandResult(stdout = "{\"loggedIn\":true}", exitCode = 0),
+            ),
+            Path.of("C:/plugin-neutral"),
+        )
+
+        val profile = runner.probe()
+
+        assertEquals(ProviderDiagnostic.READY, profile.diagnostic)
+        assertEquals("2.1.100", profile.version)
+        assertTrue(profile.missingFlags.isEmpty())
+    }
+
+    @Test
     fun `reports ready only when one resolved executable passes version help and auth`() {
         val executable = Path.of("C:/tools/claude.exe")
         val executor = RecordingClaudeCommandExecutor(

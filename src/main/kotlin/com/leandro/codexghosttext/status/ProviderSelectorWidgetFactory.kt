@@ -25,7 +25,10 @@ class ProviderSelectorWidgetFactory : StatusBarWidgetFactory {
 
     override fun createWidget(project: Project): StatusBarWidget = ProviderSelectorWidget(
         project,
-        ProviderSelectorModel(project.getService(ProviderRouterService::class.java)),
+        ProviderSelectorModel(
+            project.getService(ProviderRouterService::class.java),
+            project.getService(CodexGenerationStatusService::class.java),
+        ),
     )
 
     override fun disposeWidget(widget: StatusBarWidget) {
@@ -40,10 +43,13 @@ class ProviderSelectorWidgetFactory : StatusBarWidgetFactory {
 }
 
 /** Closed two-provider presentation logic, intentionally without availability probing or generation. */
-internal class ProviderSelectorModel(private val router: ProviderRouterService) {
+internal class ProviderSelectorModel(
+    private val router: ProviderRouterService,
+    private val generationStatus: CodexGenerationStatusService? = null,
+) {
     fun choiceLabels(): List<String> = ProviderId.entries.map(::displayName)
 
-    fun selectedValue(): String = displayName(router.snapshot().providerId)
+    fun selectedValue(): String = generationStatus?.currentText() ?: displayName(router.snapshot().providerId)
 
     fun choices(): List<ProviderId> = ProviderId.entries.toList()
 

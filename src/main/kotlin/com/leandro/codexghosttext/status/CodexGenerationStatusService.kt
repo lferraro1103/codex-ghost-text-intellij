@@ -4,10 +4,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.WindowManager
 import com.leandro.codexghosttext.generation.ProviderId
-import java.awt.Component
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.Timer
 
@@ -15,8 +13,9 @@ import javax.swing.Timer
 @Service(Service.Level.PROJECT)
 class CodexGenerationStatusService(private val project: Project) : Disposable {
     private val requests = GenerationRequestTracker()
-    private var widget: GenerationWidget? = null
     private var timer: Timer? = null
+    private var activeProvider: ProviderId? = null
+    private var frame = 0
 
     /** Compatibility overload until all callers pass their captured provider explicitly. */
     fun show(): Long = show(ProviderId.CODEX)
@@ -30,17 +29,14 @@ class CodexGenerationStatusService(private val project: Project) : Disposable {
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed || !requests.isActive(request)) return@invokeLater
             val statusBar = statusBar() ?: return@invokeLater
-            val activeWidget = widget ?: GenerationWidget().also {
-                widget = it
-                statusBar.addWidget(it, this)
-            }
-            activeWidget.showProvider(providerId)
+            activeProvider = providerId
+            frame = 0
             timer?.stop()
             timer = Timer(FRAME_DELAY_MILLIS) {
-                activeWidget.advance()
-                statusBar.updateWidget(activeWidget.ID())
+                frame = (frame + 1) % GenerationStatusPresentation.frameCount
+                statusBar.updateWidget(ProviderSelectorWidgetFactory.WIDGET_ID)
             }.also { it.start() }
-            statusBar.updateWidget(activeWidget.ID())
+            statusBar.updateWidget(ProviderSelectorWidgetFactory.WIDGET_ID)
         }
         return request
     }
@@ -58,35 +54,16 @@ class CodexGenerationStatusService(private val project: Project) : Disposable {
     private fun removeWidget() {
         timer?.stop()
         timer = null
-        val activeWidget = widget ?: return
-        statusBar()?.removeWidget(activeWidget.ID())
-        widget = null
+        activeProvider = null
+        frame = 0
+        statusBar()?.updateWidget(ProviderSelectorWidgetFactory.WIDGET_ID)
     }
+
+    internal fun currentText(): String? = activeProvider?.let { GenerationStatusPresentation.text(it, frame) }
 
     private fun statusBar() = runCatching { WindowManager.getInstance().getStatusBar(project) }.getOrNull()
 
-    private class GenerationWidget : StatusBarWidget, StatusBarWidget.TextPresentation {
-        private var frame = 0
-        private var providerId = ProviderId.CODEX
-
-        override fun ID(): String = WIDGET_ID
-        override fun getPresentation(): StatusBarWidget.WidgetPresentation = this
-        override fun getText(): String = GenerationStatusPresentation.text(providerId, frame)
-        override fun getAlignment(): Float = Component.CENTER_ALIGNMENT
-        override fun getTooltipText(): String = "${GenerationStatusPresentation.providerName(providerId)} está generando una propuesta de código"
-
-        fun advance() {
-            frame = (frame + 1) % GenerationStatusPresentation.frameCount
-        }
-
-        fun showProvider(providerId: ProviderId) {
-            this.providerId = providerId
-            frame = 0
-        }
-    }
-
     private companion object {
-        const val WIDGET_ID = "CodexGhostText.GenerationStatus"
         const val FRAME_DELAY_MILLIS = 150
     }
 }

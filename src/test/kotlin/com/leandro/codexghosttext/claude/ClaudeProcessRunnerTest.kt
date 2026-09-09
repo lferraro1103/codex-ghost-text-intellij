@@ -61,13 +61,13 @@ class ClaudeProcessRunnerTest {
         assertNull(result.diagnostic)
         val command = executor.commands.last()
         assertEquals("-p", command.arguments[0])
-        assertEquals("// crear método", command.arguments[1])
+        assertEquals("// crear método", command.arguments.last())
+        assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--tools") + 1])
         assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--allowedTools") + 1])
-        assertEquals("plan", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
-        assertEquals("1", command.arguments[command.arguments.indexOf("--max-turns") + 1])
+        assertEquals("dontAsk", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
+        assertEquals("5", command.arguments[command.arguments.indexOf("--max-turns") + 1])
         assertEquals("claude-session-1", command.arguments[command.arguments.indexOf("--resume") + 1])
-        listOf("Bash", "Edit", "Write", "WebFetch", "WebSearch", "Agent", "NotebookEdit", "MCP", "Browser", "ProjectInspection", "mcp__*")
-            .forEach { denied -> assertTrue(command.arguments[command.arguments.indexOf("--disallowedTools") + 1].contains(denied)) }
+        assertEquals("mcp__*", command.arguments[command.arguments.indexOf("--disallowedTools") + 1])
         assertFalse(command.arguments.any { it.contains(projectRoot, ignoreCase = true) })
         assertFalse(command.arguments.filter { it.startsWith("--") }.any {
             it == "--add-dir" || it == "--continue" || it.contains("plugin", ignoreCase = true) || it.contains("browser", ignoreCase = true)
@@ -89,6 +89,22 @@ class ClaudeProcessRunnerTest {
 
         val oversized = readyRunner(ClaudeCommandResult(stdoutTruncated = true)).run()
         assertEquals(ProviderDiagnostic.PROCESS_OUTPUT_TOO_LARGE, oversized.diagnostic)
+    }
+
+    @Test
+    fun `generation classifies argument authentication and quota failures without leaking output`() {
+        assertEquals(
+            ProviderDiagnostic.UNSAFE_CAPABILITIES,
+            readyRunner(ClaudeCommandResult(exitCode = 1, stderr = "unknown option --example")).run().diagnostic,
+        )
+        assertEquals(
+            ProviderDiagnostic.LOGIN_REQUIRED,
+            readyRunner(ClaudeCommandResult(exitCode = 1, stderr = "401 unauthorized")).run().diagnostic,
+        )
+        assertEquals(
+            ProviderDiagnostic.QUOTA_EXHAUSTED,
+            readyRunner(ClaudeCommandResult(exitCode = 1, stderr = "usage limit reached")).run().diagnostic,
+        )
     }
 
     private fun readyRunner(generationResult: ClaudeCommandResult): ReadyRunner {

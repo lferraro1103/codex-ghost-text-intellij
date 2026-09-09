@@ -120,14 +120,15 @@ class MultiProviderWorkflowTest : LightJavaCodeInsightFixtureTestCase() {
         )
         assertEquals(0, codex.generateCalls)
         val command = executor.commands.last()
-        val prompt = command.arguments[command.arguments.indexOf("-p") + 1]
+        val prompt = command.arguments.last()
         assertTrue(prompt.contains(comment))
         assertTrue(prompt.contains("before-editor-context"))
         assertTrue(prompt.contains("after-editor-context"))
         assertFalse(prompt.contains(projectRoot, ignoreCase = true))
+        assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--tools") + 1])
         assertEquals("Read,Glob,Grep", command.arguments[command.arguments.indexOf("--allowedTools") + 1])
-        assertEquals("plan", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
-        assertTrue(command.arguments[command.arguments.indexOf("--disallowedTools") + 1].contains("Bash"))
+        assertEquals("dontAsk", command.arguments[command.arguments.indexOf("--permission-mode") + 1])
+        assertEquals("mcp__*", command.arguments[command.arguments.indexOf("--disallowedTools") + 1])
         assertEquals(Path.of(projectRoot), command.workingDirectory)
         assertFalse(command.arguments.any { it.contains(projectRoot, ignoreCase = true) })
     }

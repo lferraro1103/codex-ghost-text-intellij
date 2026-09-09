@@ -54,6 +54,12 @@ It reuses the Codex CLI login, normally configured with `codex login`. As an add
 
 **Tools → Check Codex Connection** checks whether local Codex is available, the account is a ChatGPT account, and quota remains. Once an account limit is reached, generation pauses until Codex has quota again. Account, billing, and limits are managed by Codex/ChatGPT.
 
+### Claude login and compatibility
+
+The plugin runs the locally installed `claude` executable directly and reuses its stored Claude Code login. Authenticate outside IntelliJ with `claude auth login`; verify it with `claude auth status`. No Anthropic API key is requested or stored.
+
+Compatibility is checked from `claude --help` capabilities instead of a hard-coded version number. Generation uses print-mode JSON, restricts built-in tools to `Read`, `Glob`, and `Grep`, denies every MCP tool, and uses `dontAsk` so anything outside that surface is rejected without an interactive prompt.
+
 ### Privacy and safety
 
 Codex and Claude receive the project folder as their working directory. Each request adds only the selected comment plus nearby file context: up to 2,000 preceding and 4,000 following characters. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
@@ -143,6 +149,12 @@ codex app-server --listen stdio://
 Reutiliza el inicio de sesión de Codex CLI, normalmente configurado con `codex login`. Como protección adicional elimina `CODEX_API_KEY`, `OPENAI_API_KEY` y `CODEX_ACCESS_TOKEN` del entorno del subproceso, por lo que no puede pasar silenciosamente a facturación por API.
 
 **Tools → Check Codex Connection** comprueba la disponibilidad de Codex local, que la cuenta sea de ChatGPT y que haya cuota. Cuando se alcanza el límite, la generación queda detenida hasta que Codex vuelva a tener cuota. La cuenta, facturación y límites los gestiona Codex/ChatGPT.
+
+### Inicio de sesión y compatibilidad de Claude
+
+El plugin ejecuta directamente el binario local `claude` y reutiliza su sesión guardada de Claude Code. Iniciá sesión fuera de IntelliJ con `claude auth login`; comprobala con `claude auth status`. El plugin no solicita ni guarda una API key de Anthropic.
+
+La compatibilidad se comprueba mediante las capacidades informadas por `claude --help`, no con un número de versión fijo. La generación usa JSON en modo print, limita las herramientas integradas a `Read`, `Glob` y `Grep`, bloquea todas las herramientas MCP y usa `dontAsk` para rechazar sin interacción cualquier capacidad ajena a esa lista.
 
 ### Privacidad y seguridad
 

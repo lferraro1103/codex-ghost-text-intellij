@@ -43,7 +43,7 @@ class ClaudeGenerationService private constructor(
         if (!generating.compareAndSet(false, true)) return GenerationResult.Failure(ProviderDiagnostic.PROCESS_ALREADY_RUNNING.userMessage)
         try {
             val profile = processRunner.probe()
-            if (!profile.isReady) return GenerationResult.Failure(profile.diagnostic.userMessage)
+            if (!profile.isReady) return GenerationResult.Failure(profile.userMessage)
 
             val prompt = buildPrompt(request.comment, request.documentText, request.range)
             val savedSession = conversationState.sessionFor(request.projectRoot)

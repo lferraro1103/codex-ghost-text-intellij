@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Shell-free boundary for the locally installed Claude executable.
  *
- * The working directory below is only neutral process placement. It is deliberately not a
- * containment or authorization boundary: the command itself exposes no tools or project path.
+ * Availability checks run from a neutral directory. Generation runs from the IntelliJ project
+ * root with an explicit read-only tool surface.
  */
 interface ClaudeProcessRunner {
     fun probe(): ClaudeCapabilityProfile
@@ -32,8 +32,9 @@ interface ClaudeProcessRunner {
         val requiredCapabilityFlags = setOf(
             "--print",
             "--output-format",
-            "--allowedTools",
-            "--disallowedTools",
+            "--tools",
+            "--allowed-tools",
+            "--disallowed-tools",
             "--permission-mode",
             "--max-turns",
             "--resume",
@@ -45,10 +46,21 @@ data class ClaudeCapabilityProfile(
     val executable: Path?,
     val diagnostic: ProviderDiagnostic,
     val supportedFlags: Set<String> = emptySet(),
+    val version: String? = null,
 ) {
     val isReady: Boolean
         get() = executable != null && diagnostic == ProviderDiagnostic.READY &&
             supportedFlags.containsAll(ClaudeProcessRunner.requiredCapabilityFlags)
+
+    val missingFlags: Set<String>
+        get() = ClaudeProcessRunner.requiredCapabilityFlags - supportedFlags
+
+    val userMessage: String
+        get() = if (diagnostic == ProviderDiagnostic.UNSAFE_CAPABILITIES && missingFlags.isNotEmpty()) {
+            "A la CLI de Claude le faltan opciones requeridas: ${missingFlags.joinToString(", ")}."
+        } else {
+            diagnostic.userMessage
+        }
 }
 
 /** Prompt, opaque Claude-only session id, and the project directory available read-only. */
@@ -308,29 +320,34 @@ internal class DefaultClaudeProcessRunner(
         val version = execute(executable, listOf("--version"))
         version.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
         if (version.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_COMMAND_FAILED)
-        if (!hasParseableVersion(version.stdout)) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_UNPARSEABLE)
+        val installedVersion = parseVersion("${version.stdout}\n${version.stderr}")
+            ?: return ClaudeCapabilityProfile(executable, ProviderDiagnostic.VERSION_UNPARSEABLE)
 
         val help = execute(executable, listOf("--help"))
         help.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
         if (help.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.HELP_COMMAND_FAILED)
-        val supported = ClaudeProcessRunner.requiredCapabilityFlags.filterTo(linkedSetOf()) { flag -> help.stdout.contains(flag) }
+        val helpText = "${help.stdout}\n${help.stderr}"
+        val supported = ClaudeProcessRunner.requiredCapabilityFlags.filterTo(linkedSetOf()) { capability ->
+            CAPABILITY_ALIASES.getValue(capability).any(helpText::contains)
+        }
         if (!supported.containsAll(ClaudeProcessRunner.requiredCapabilityFlags)) {
-            return ClaudeCapabilityProfile(executable, ProviderDiagnostic.UNSAFE_CAPABILITIES, supported)
+            return ClaudeCapabilityProfile(executable, ProviderDiagnostic.UNSAFE_CAPABILITIES, supported, installedVersion)
         }
 
         val auth = execute(executable, listOf("auth", "status"))
         when (auth.stdout.authenticatedState()) {
-            false -> return ClaudeCapabilityProfile(executable, ProviderDiagnostic.LOGIN_REQUIRED, supported)
+            false -> return ClaudeCapabilityProfile(executable, ProviderDiagnostic.LOGIN_REQUIRED, supported, installedVersion)
             null -> return ClaudeCapabilityProfile(
                 executable,
                 auth.diagnostic ?: if (auth.exitCode == 0) ProviderDiagnostic.AUTH_STATUS_MALFORMED else ProviderDiagnostic.AUTH_STATUS_FAILED,
                 supported,
+                installedVersion,
             )
             true -> Unit
         }
-        auth.diagnostic?.let { return ClaudeCapabilityProfile(executable, it, supported) }
-        if (auth.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.AUTH_STATUS_FAILED, supported)
-        return ClaudeCapabilityProfile(executable, ProviderDiagnostic.READY, supported)
+        auth.diagnostic?.let { return ClaudeCapabilityProfile(executable, it, supported, installedVersion) }
+        if (auth.exitCode != 0) return ClaudeCapabilityProfile(executable, ProviderDiagnostic.AUTH_STATUS_FAILED, supported, installedVersion)
+        return ClaudeCapabilityProfile(executable, ProviderDiagnostic.READY, supported, installedVersion)
     }
 
     override fun run(profile: ClaudeCapabilityProfile, request: ClaudeProcessRequest): ClaudeProcessResult {
@@ -339,24 +356,30 @@ internal class DefaultClaudeProcessRunner(
         try {
             val arguments = buildList {
                 add("-p")
-                add(request.prompt)
                 add("--output-format")
                 add("json")
-                // Project context is read-only: no shell, edit, web, agent, or MCP capability.
+                // --tools restricts the built-in surface; --allowedTools would only auto-approve.
+                add("--tools")
+                add(READ_ONLY_TOOLS.joinToString(","))
+                // Pre-approve the same read-only tools so dontAsk can run headlessly.
                 add("--allowedTools")
                 add(READ_ONLY_TOOLS.joinToString(","))
-                // Explicit denials protect against a CLI capability-default regression.
+                // --tools does not affect MCP tools, so deny every MCP capability separately.
+                // Keep the original camel-case spelling for older Claude Code builds.
                 add("--disallowedTools")
-                add(DISALLOWED_TOOLS.joinToString(","))
+                add("mcp__*")
                 add("--permission-mode")
-                // Claude Code's documented plan mode permits inspection but blocks commands and edits.
-                add("plan")
+                // With dontAsk, anything outside the explicit tool surface is denied headlessly.
+                add("dontAsk")
                 add("--max-turns")
-                add("1")
+                // Reading project files may require several tool/result turns before final code.
+                add("5")
                 request.resumeSessionId?.takeIf(String::isNotBlank)?.let { sessionId ->
                     add("--resume")
                     add(sessionId)
                 }
+                // Keep the positional prompt last, matching Claude's documented resume syntax.
+                add(request.prompt)
             }
             val raw = commandExecutor.execute(
                 ClaudeCommand(
@@ -412,11 +435,21 @@ internal class DefaultClaudeProcessRunner(
         cancelled -> ProviderDiagnostic.CANCELLED
         timedOut -> ProviderDiagnostic.PROCESS_TIMEOUT
         stdoutTruncated || stderrTruncated -> ProviderDiagnostic.PROCESS_OUTPUT_TOO_LARGE
-        includeExitFailure && exitCode != 0 -> ProviderDiagnostic.PROCESS_FAILED
+        includeExitFailure && exitCode != 0 -> classifyClaudeFailure(stdout, stderr)
         else -> null
     }
 
-    private fun hasParseableVersion(value: String): Boolean = VERSION_PATTERN.containsMatchIn(value)
+    private fun classifyClaudeFailure(stdout: String, stderr: String): ProviderDiagnostic {
+        val output = "$stdout\n$stderr"
+        return when {
+            QUOTA_FAILURE.containsMatchIn(output) -> ProviderDiagnostic.QUOTA_EXHAUSTED
+            AUTH_FAILURE.containsMatchIn(output) -> ProviderDiagnostic.LOGIN_REQUIRED
+            ARGUMENT_FAILURE.containsMatchIn(output) -> ProviderDiagnostic.UNSAFE_CAPABILITIES
+            else -> ProviderDiagnostic.PROCESS_FAILED
+        }
+    }
+
+    private fun parseVersion(value: String): String? = VERSION_PATTERN.find(value)?.value
 
     private fun String.authenticatedState(): Boolean? {
         val value = AUTH_BOOLEAN.find(this)?.groupValues?.get(1)?.toBooleanStrictOrNull()
@@ -437,23 +470,23 @@ internal class DefaultClaudeProcessRunner(
             "CLAUDE_CODE_OAUTH_TOKEN",
         )
         private val READ_ONLY_TOOLS = listOf("Read", "Glob", "Grep")
-        private val DISALLOWED_TOOLS = listOf(
-            "Bash",
-            "Edit",
-            "Write",
-            "WebFetch",
-            "WebSearch",
-            "Agent",
-            "NotebookEdit",
-            "MCP",
-            "Browser",
-            "ProjectInspection",
-            "mcp__*",
+        private val CAPABILITY_ALIASES = mapOf(
+            "--print" to listOf("--print", "-p"),
+            "--output-format" to listOf("--output-format"),
+            "--tools" to listOf("--tools"),
+            "--allowed-tools" to listOf("--allowedTools", "--allowed-tools"),
+            "--disallowed-tools" to listOf("--disallowedTools", "--disallowed-tools"),
+            "--permission-mode" to listOf("--permission-mode"),
+            "--max-turns" to listOf("--max-turns"),
+            "--resume" to listOf("--resume", "-r"),
         )
 
         private val VERSION_PATTERN = Regex("""(?<![0-9])(\d+)\.(\d+)\.(\d+)(?![0-9])""")
         private val AUTH_BOOLEAN = Regex("""\"(?:loggedIn|authenticated)\"\s*:\s*(true|false)""", RegexOption.IGNORE_CASE)
         private val AUTH_STATUS = Regex("""\"status\"\s*:\s*\"([^\"]+)\"""", RegexOption.IGNORE_CASE)
+        private val QUOTA_FAILURE = Regex("""quota|usage\s+limit|rate\s+limit|credit\s+balance|limit\s+(?:reached|exceeded)""", RegexOption.IGNORE_CASE)
+        private val AUTH_FAILURE = Regex("""not\s+logged\s+in|authentication|unauthorized|invalid\s+(?:token|credentials?)|\b401\b|please\s+login""", RegexOption.IGNORE_CASE)
+        private val ARGUMENT_FAILURE = Regex("""unknown\s+(?:option|argument)|unrecognized\s+(?:option|argument)|invalid\s+option""", RegexOption.IGNORE_CASE)
         private const val PROBE_TIMEOUT_MILLIS = 8_000L
         private const val GENERATION_TIMEOUT_MILLIS = 75_000L
         private const val MAX_PROBE_OUTPUT_BYTES = 64 * 1024
