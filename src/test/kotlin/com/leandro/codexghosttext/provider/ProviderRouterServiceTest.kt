@@ -8,6 +8,7 @@ import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +78,38 @@ class ProviderRouterServiceTest {
         assertEquals(1, claude.resetCalls)
     }
 
+    @Test
+    fun `switches to the other provider only when the selected CLI is not installed`() {
+        val codex = FakeProvider(ProviderId.CODEX, ProviderDiagnostic.MISSING_EXECUTABLE, installed = false)
+        val claude = FakeProvider(ProviderId.CLAUDE, ProviderDiagnostic.READY)
+        val router = router(ProviderProjectState(), codex, claude)
+
+        assertEquals(ProviderId.CLAUDE, router.switchToInstalledProvider())
+        assertEquals(ProviderId.CLAUDE, router.snapshot().providerId)
+        // Already on an installed provider: nothing to substitute.
+        assertNull(router.switchToInstalledProvider())
+    }
+
+    @Test
+    fun `keeps a selected provider that is installed but not usable`() {
+        val codex = FakeProvider(ProviderId.CODEX, ProviderDiagnostic.LOGIN_REQUIRED)
+        val claude = FakeProvider(ProviderId.CLAUDE, ProviderDiagnostic.READY)
+        val router = router(ProviderProjectState(), codex, claude)
+
+        assertNull(router.switchToInstalledProvider())
+        assertEquals(ProviderId.CODEX, router.snapshot().providerId)
+    }
+
+    @Test
+    fun `keeps the selection when neither CLI is installed`() {
+        val codex = FakeProvider(ProviderId.CODEX, ProviderDiagnostic.MISSING_EXECUTABLE, installed = false)
+        val claude = FakeProvider(ProviderId.CLAUDE, ProviderDiagnostic.MISSING_EXECUTABLE, installed = false)
+        val router = router(ProviderProjectState(), codex, claude)
+
+        assertNull(router.switchToInstalledProvider())
+        assertEquals(ProviderId.CODEX, router.snapshot().providerId)
+    }
+
     private fun router(state: ProviderProjectState, codex: FakeProvider, claude: FakeProvider) =
         ProviderRouterService(state, mapOf(ProviderId.CODEX to codex, ProviderId.CLAUDE to claude), {}, {})
 
@@ -84,9 +117,12 @@ class ProviderRouterServiceTest {
         override val providerId: ProviderId,
         private val diagnostic: ProviderDiagnostic,
         private val events: MutableList<String>? = null,
+        private val installed: Boolean = true,
     ) : LocalGenerationProvider {
         var availabilityChecks = 0
         var resetCalls = 0
+
+        override fun isInstalled(): Boolean = installed
 
         override fun checkAvailability(): ProviderDiagnostic {
             availabilityChecks++

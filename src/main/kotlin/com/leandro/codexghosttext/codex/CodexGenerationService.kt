@@ -5,9 +5,14 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.TextRange
 import com.leandro.codexghosttext.env.LocalCliEnvironment
+import com.leandro.codexghosttext.generation.CodeProposal
 import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.generation.ProjectContextService
 import com.leandro.codexghosttext.generation.SourceLanguage
+import com.leandro.codexghosttext.json.JsonValue
+import com.leandro.codexghosttext.json.obj
+import com.leandro.codexghosttext.json.string
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
@@ -67,12 +72,6 @@ class CodexGenerationService(private val project: Project) : Disposable {
             val writer = activeWriter ?: return GenerationResult.Failure("Codex cerró la conexión.")
             val prompt = """
                 Generá únicamente el código nuevo que va inmediatamente debajo del comentario seleccionado.
-
-                La primera respuesta visible debe comenzar directamente con código. No expliques qué vas a hacer,
-                no describas pasos, no respondas al comentario en lenguaje natural y no uses Markdown ni cercos de código.
-                Si no podés producir código insertable, respondé vacío. El proyecto asociado está disponible sólo
-                en lectura mediante su carpeta de trabajo: inspeccioná archivos únicamente si necesitás ese contexto
-                para generar el código y nunca los modifiques.
                 ${SourceLanguage.instruction(request)}
 
                 Comentario seleccionado:
@@ -136,7 +135,12 @@ class CodexGenerationService(private val project: Project) : Disposable {
         }
         synchronized(writerLock) { writer.notification("initialized", "{}") }
 
-        val sessionParams = "{\"cwd\":${projectRoot.json()},\"approvalPolicy\":\"never\",\"sandbox\":\"read-only\",\"config\":{\"web_search\":\"disabled\",\"features\":{\"plugins\":false}}}"
+        // developerInstructions belong to the thread, so the per-request prompt no longer repeats
+        // the rules on every turn. MCP servers configured by the user still start: the App Server
+        // has no per-thread switch for them, so an actual tool call is what cancels a proposal.
+        val sessionParams = "{\"cwd\":${projectRoot.json()},\"approvalPolicy\":\"never\",\"sandbox\":\"read-only\"," +
+            "\"developerInstructions\":${developerInstructions().json()}," +
+            "\"config\":{\"web_search\":\"disabled\",\"features\":{\"plugins\":false}}}"
         val threadId = reusePolicy.establish(
             projectRoot,
             conversationState.threadFor(projectRoot),
@@ -168,33 +172,44 @@ class CodexGenerationService(private val project: Project) : Disposable {
     }
 
     private fun collect(reader: BufferedReader, request: GenerationRequest): GenerationResult {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(75)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(GENERATION_TIMEOUT_SECONDS)
         val text = StringBuilder()
         while (System.nanoTime() < deadline) {
             if (!reader.ready()) {
-                Thread.sleep(20)
+                Thread.sleep(POLL_MILLIS)
                 continue
             }
             val line = reader.readLine() ?: return GenerationResult.Failure("Codex cerró la conexión.")
-            if (line.length > 64 * 1024) return GenerationResult.Failure("Respuesta de Codex demasiado grande.")
-            when {
-                line.contains("\"method\":\"item/agentMessage/delta\"") -> line.jsonField("delta")?.let(text::append)
-                line.contains("\"type\":\"fileChange\"") || line.contains("\"method\":\"applyPatchApproval\"") -> return GenerationResult.Failure("Codex intentó modificar archivos; la propuesta fue cancelada.")
-                line.contains("\"type\":\"mcpToolCall\"") || line.contains("\"type\":\"dynamicToolCall\"") || line.contains("\"type\":\"collabAgentToolCall\"") || line.contains("\"type\":\"webSearch\"") -> return GenerationResult.Failure("Codex intentó usar una herramienta no permitida; la propuesta fue cancelada.")
-                line.contains("\"method\":\"turn/completed\"") -> return if (line.contains("\"status\":\"completed\"")) proposal(text.toString(), request) else GenerationResult.Failure("Codex no pudo completar la generación.")
+            if (text.length > CodeProposal.MAX_CHARS * 2) return GenerationResult.Failure("Respuesta de Codex demasiado grande.")
+            when (val event = codexStreamEvent(line)) {
+                is CodexStreamEvent.Delta -> text.append(event.text)
+                is CodexStreamEvent.FileChangeAttempt -> return GenerationResult.Failure(FILE_CHANGE_MESSAGE)
+                is CodexStreamEvent.ForbiddenTool -> return GenerationResult.Failure(FORBIDDEN_TOOL_MESSAGE)
+                is CodexStreamEvent.TurnFinished -> return if (event.completed) {
+                    proposal(text.toString(), request)
+                } else {
+                    GenerationResult.Failure("Codex no pudo completar la generación.")
+                }
+                null -> Unit
             }
         }
         return GenerationResult.Failure("Codex tardó demasiado en responder.")
     }
 
     private fun proposal(raw: String, request: GenerationRequest): GenerationResult {
-        raw.fenceTag()?.let { tag ->
+        CodeProposal.fenceTag(raw)?.let { tag ->
             if (SourceLanguage.fenceConflicts(tag, request.language, request.fileName)) {
                 return GenerationResult.Failure("Codex respondió en $tag y el archivo no está en ese lenguaje.")
             }
         }
-        val code = raw.codeOnlyProposal()
-        return if (code.isBlank() || code.length > 16_000 || code.lines().size > 80) GenerationResult.Failure("Codex no devolvió una propuesta utilizable.") else GenerationResult.Success(code)
+        // Codex sometimes opens with a sentence before the code, so the answer is trimmed to where
+        // code starts; what remains still has to pass the shared insertable-code check.
+        val code = CodeProposal.trimToCodeStart(CodeProposal.withoutFence(raw))
+        return if (CodeProposal.isInsertable(code)) {
+            GenerationResult.Success(code)
+        } else {
+            GenerationResult.Failure("Codex no devolvió una propuesta utilizable.")
+        }
     }
 
     private fun closeSessionLocked() {
@@ -214,10 +229,61 @@ class CodexGenerationService(private val project: Project) : Disposable {
         activeProcess = null
     }
 
+    /** The fixed rules plus this project's brief, sent once when the thread is created. */
+    private fun developerInstructions(): String =
+        DEVELOPER_INSTRUCTIONS + "\n\n" + project.getService(ProjectContextService::class.java).brief()
+
     private fun nextRequestId(): Int = requestIds.incrementAndGet()
+
+    private companion object {
+        const val GENERATION_TIMEOUT_SECONDS = 75L
+        const val POLL_MILLIS = 20L
+        const val FILE_CHANGE_MESSAGE = "Codex intentó modificar archivos; la propuesta fue cancelada."
+        const val FORBIDDEN_TOOL_MESSAGE = "Codex intentó usar una herramienta no permitida; la propuesta fue cancelada."
+        /** The read-only rules, stated once for the whole thread instead of on every turn. */
+        val DEVELOPER_INSTRUCTIONS = """
+            Respondé siempre con código insertable y nada más: la primera línea visible es código.
+            No expliques qué vas a hacer, no describas pasos, no respondas en lenguaje natural y no
+            uses Markdown ni cercos de código. Si no podés producir código insertable, respondé vacío.
+            El proyecto está disponible sólo en lectura desde tu carpeta de trabajo: inspeccioná
+            archivos únicamente si necesitás ese contexto y nunca los modifiques.
+        """.trimIndent()
+    }
 
     override fun dispose() {
         synchronized(sessionLock) { closeSessionLocked() }
+    }
+}
+
+/**
+ * One App Server record, read as JSON.
+ *
+ * Records used to be matched with `line.contains("...")`, which the generated code itself could
+ * trigger: a proposal containing the text `"type":"fileChange"` cancelled itself.
+ */
+internal sealed interface CodexStreamEvent {
+    data class Delta(val text: String) : CodexStreamEvent
+    data object FileChangeAttempt : CodexStreamEvent
+    data object ForbiddenTool : CodexStreamEvent
+    data class TurnFinished(val completed: Boolean) : CodexStreamEvent
+}
+
+private val FILE_CHANGE_ITEMS = setOf("fileChange", "patchApply")
+private val FORBIDDEN_TOOL_ITEMS = setOf("mcpToolCall", "dynamicToolCall", "collabAgentToolCall", "webSearch")
+
+internal fun codexStreamEvent(line: String): CodexStreamEvent? {
+    val record = JsonValue.parseObject(line) ?: return null
+    val method = record.string("method")
+    if (method == "applyPatchApproval") return CodexStreamEvent.FileChangeAttempt
+    val params = record.obj("params")
+    val itemType = params?.obj("item")?.string("type")
+    return when {
+        itemType in FILE_CHANGE_ITEMS -> CodexStreamEvent.FileChangeAttempt
+        itemType in FORBIDDEN_TOOL_ITEMS -> CodexStreamEvent.ForbiddenTool
+        method == "item/agentMessage/delta" -> params?.string("delta")?.let(CodexStreamEvent::Delta)
+        method == "turn/completed" -> CodexStreamEvent.TurnFinished(params?.obj("turn")?.string("status") == "completed")
+        method == "turn/failed" -> CodexStreamEvent.TurnFinished(completed = false)
+        else -> null
     }
 }
 
@@ -248,57 +314,14 @@ private fun String.json(): String = buildString {
     append('"')
 }
 
-internal fun String.jsonField(name: String): String? {
-    val marker = "\"$name\""
-    val start = indexOf(marker)
-    if (start < 0) return null
-    val quote = indexOf('"', indexOf(':', start) + 1)
-    if (quote < 0) return null
-    val output = StringBuilder()
-    var escape = false
-    for (index in quote + 1 until length) {
-        val character = this[index]
-        if (!escape && character == '"') return output.toString()
-        if (!escape && character == '\\') {
-            escape = true
-            continue
-        }
-        output.append(if (escape) when (character) { 'n' -> '\n'; 'r' -> '\r'; 't' -> '\t'; else -> character } else character)
-        escape = false
-    }
-    return null
-}
+/** The thread id of a `thread/start` or `thread/resume` result. */
+internal fun String.threadId(): String? = JsonValue.parseObject(this)?.obj("result")?.obj("thread")?.string("id")
 
-internal fun String.threadId(): String? {
-    val thread = indexOf("\"thread\"")
-    return if (thread < 0) null else substring(thread).jsonField("id")
-}
+/** The turn id of a `turn/start` result. */
+internal fun String.turnId(): String? = JsonValue.parseObject(this)?.obj("result")?.obj("turn")?.string("id")
 
-internal fun String.turnId(): String? {
-    val turn = indexOf("\"turn\"")
-    return if (turn < 0) null else substring(turn).jsonField("id")
-}
-
-internal fun String.isJsonRpcError(): Boolean = contains("\"error\"") && !contains("\"result\"")
-
-/** The language tag Codex put on an opening fence, when it announced one. */
-internal fun String.fenceTag(): String? = trimStart()
-    .takeIf { it.startsWith("```") }
-    ?.substringAfter("```")
-    ?.substringBefore('\n')
-    ?.trim()
-    ?.takeIf { it.isNotEmpty() && it.matches(Regex("[A-Za-z0-9+#._-]{1,20}")) }
-
-internal fun String.codeOnlyProposal(): String {
-    val text = trim().removePrefix("```kotlin").removePrefix("```").removeSuffix("```").trim()
-    val starts = listOf(
-        Regex("""(?m)^\s*(?=(?://|/\*|@\w|(?:public|private|protected|internal|fun|class|interface|object|data\s+class|sealed\s+class|enum\s+class|static|void|boolean|byte|short|int|long|float|double|char|String)\b))"""),
-        Regex("""\b(?:public|private|protected)\s+(?:(?:static|final|abstract|synchronized)\s+)*(?:void|boolean|byte|short|int|long|float|double|char|String|[A-Z]\w*(?:<[^\n>]+>)?)\s+\w+\s*\("""),
-        Regex("""(?m)^\s*(?=\w+(?:\.\w+)*\s*(?:=|\+\+|--))"""),
-    )
-    val start = starts.mapNotNull { it.find(text)?.range?.first }.minOrNull() ?: return ""
-    return text.substring(start).trim()
-}
+internal fun String.isJsonRpcError(): Boolean = JsonValue.parseObject(this)
+    ?.let { it.values.containsKey("error") && !it.values.containsKey("result") } ?: true
 
 private fun String.window(range: TextRange): String {
     val start = (range.startOffset - 2000).coerceAtLeast(0)

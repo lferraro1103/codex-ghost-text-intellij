@@ -4,6 +4,10 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.leandro.codexghosttext.env.LocalCliEnvironment
 import com.leandro.codexghosttext.env.LocalCliExecutableSearch
+import com.leandro.codexghosttext.json.JsonValue
+import com.leandro.codexghosttext.json.obj
+import com.leandro.codexghosttext.json.scalar
+import com.leandro.codexghosttext.json.string
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.nio.file.Files
@@ -15,10 +19,32 @@ import java.util.concurrent.TimeUnit
 class CodexAvailabilityService : Disposable {
     private val isChecking = AtomicBoolean(false)
 
+    /**
+     * The preflight starts its own App Server, so running it before every generation doubled the
+     * process cost of a request. Only a ready result is cached, and only briefly: login, quota,
+     * and connection problems are what the user is about to fix, so those are always re-checked.
+     */
+    @Volatile
+    private var readySince: Long = 0
+
     @Volatile
     private var activeProcess: Process? = null
 
     fun check(): CodexDiagnostic {
+        if (System.nanoTime() - readySince < TimeUnit.MILLISECONDS.toNanos(READY_CACHE_MILLIS)) {
+            return CodexDiagnostic.CHATGPT_READY
+        }
+        val diagnostic = checkUncached()
+        readySince = if (diagnostic == CodexDiagnostic.CHATGPT_READY) System.nanoTime() else 0
+        return diagnostic
+    }
+
+    /** Forgets the cached readiness, so the next check starts a fresh App Server. */
+    fun invalidate() {
+        readySince = 0
+    }
+
+    private fun checkUncached(): CodexDiagnostic {
         val executable = CodexExecutableLocator.find() ?: return CodexDiagnostic.MISSING_EXECUTABLE
         if (!isChecking.compareAndSet(false, true)) return CodexDiagnostic.CONNECTION_FAILED
         var process: Process? = null
@@ -68,7 +94,12 @@ class CodexAvailabilityService : Disposable {
     }
 
     override fun dispose() {
+        invalidate()
         activeProcess?.destroyForcibly()
+    }
+
+    private companion object {
+        const val READY_CACHE_MILLIS = 120_000L
     }
 }
 
@@ -94,33 +125,34 @@ enum class CodexDiagnostic {
  * retain complete server payloads.
  */
 internal object CodexProtocol {
-    private const val MAX_LINE_LENGTH = 64 * 1024
+    /**
+     * A single App Server record. The thread and turn payloads are already several kilobytes and
+     * grow with the conversation, so an oversized record is skipped rather than treated as a
+     * protocol failure; the caller's timeout still bounds the wait.
+     */
+    private const val MAX_LINE_LENGTH = 1024 * 1024
     private const val RESPONSE_TIMEOUT_MILLIS = 8_000L
-    private val methodPattern = Regex("\\\"method\\\"\\s*:")
-    private val accountTypePattern = Regex("\\\"type\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
-    private val nullAccountPattern = Regex("^\\\"account\\\"\\s*:\\s*null")
-    private val usedPercentPattern = Regex("\\\"usedPercent\\\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)")
 
     fun responseForId(reader: BufferedReader, id: Int): String? {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(RESPONSE_TIMEOUT_MILLIS)
-        val expectedId = Regex("\\\"id\\\"\\s*:\\s*(?:$id|\\\"$id\\\")(?=\\s*[,}])")
 
         while (System.nanoTime() < deadline) {
             if (!reader.ready()) {
-                Thread.sleep(20)
+                Thread.sleep(POLL_MILLIS)
                 continue
             }
 
             val line = reader.readLine() ?: return null
-            if (line.length > MAX_LINE_LENGTH || !line.trimStart().startsWith("{")) return null
+            if (line.length > MAX_LINE_LENGTH) continue
+            val record = JsonValue.parseObject(line) ?: continue
 
             // The App Server is bidirectional. It can send notifications, or even a server
             // request with its own id, while a client request is in flight. Those records are
             // not the correlated JSON-RPC response we are waiting for.
-            if (expectedId.containsMatchIn(line) &&
-                !methodPattern.containsMatchIn(line) &&
-                (line.contains("\"result\"") || line.contains("\"error\""))
-            ) return line
+            val correlated = record.scalar("id") == id.toString() &&
+                record.values["method"] == null &&
+                (record.values.containsKey("result") || record.values.containsKey("error"))
+            if (correlated) return line
 
             // Every caller has a bounded timeout. With approvalPolicy=never and a read-only
             // sandbox, no ignored callback can authorize a write.
@@ -130,16 +162,11 @@ internal object CodexProtocol {
     }
 
     fun classifyAccount(response: String): CodexDiagnostic {
-        if (!response.contains("\"result\"")) return CodexDiagnostic.CONNECTION_FAILED
+        val result = JsonValue.parseObject(response)?.obj("result") ?: return CodexDiagnostic.CONNECTION_FAILED
         // `requiresOpenaiAuth` describes the deployment, not the session: current Codex releases
         // report it as true for a fully logged-in ChatGPT account, so the account object is the
         // only login signal. An absent or null account still means login is required.
-        val account = response.indexOf("\"account\"")
-            .takeIf { it >= 0 }
-            ?.let { response.substring(it) }
-            ?.takeUnless { nullAccountPattern.containsMatchIn(it) }
-            ?: return CodexDiagnostic.LOGIN_REQUIRED
-        val accountType = accountTypePattern.find(account)?.groupValues?.get(1)?.lowercase()
+        val accountType = result.obj("account")?.string("type")?.lowercase()
             ?: return CodexDiagnostic.LOGIN_REQUIRED
         return if (accountType == "chatgpt") {
             CodexDiagnostic.CHATGPT_READY
@@ -148,8 +175,22 @@ internal object CodexProtocol {
         }
     }
 
-    fun isQuotaExhausted(response: String): Boolean =
-        usedPercentPattern.findAll(response).any { it.groupValues[1].toDouble() >= 100.0 }
+    fun isQuotaExhausted(response: String): Boolean {
+        val root = JsonValue.parse(response) ?: return false
+        return exhaustedWindow(root)
+    }
+
+    /** Codex reports one window per limit, so any exhausted window pauses generation. */
+    private fun exhaustedWindow(value: JsonValue): Boolean = when (value) {
+        is JsonValue.ObjectValue -> value.values.any { (key, child) ->
+            (key == "usedPercent" && (child as? JsonValue.LiteralValue)?.value?.toDoubleOrNull()?.let { it >= 100.0 } == true) ||
+                exhaustedWindow(child)
+        }
+        is JsonValue.ArrayValue -> value.values.any(::exhaustedWindow)
+        else -> false
+    }
+
+    private const val POLL_MILLIS = 20L
 }
 
 internal object CodexExecutableLocator {

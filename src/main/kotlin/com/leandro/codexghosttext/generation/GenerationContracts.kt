@@ -62,6 +62,12 @@ interface LocalGenerationProvider {
 
     fun checkAvailability(): ProviderDiagnostic
 
+    /**
+     * Whether this provider's CLI exists on this machine. It only looks at the filesystem: no
+     * process is started, so the router can ask both providers before every request.
+     */
+    fun isInstalled(): Boolean = true
+
     fun generate(request: GenerationRequest): GenerationResult
 
     fun cancel()

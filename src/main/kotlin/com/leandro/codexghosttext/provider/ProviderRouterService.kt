@@ -111,6 +111,23 @@ class ProviderRouterService private constructor(
         return selected.providerId
     }
 
+    /**
+     * Switches to the other provider when the selected CLI is not installed and the other one is.
+     *
+     * This is the only automatic substitution: a provider that is installed but logged out, out of
+     * quota, or failing still reports its own diagnostic, because those are the user's to resolve
+     * and silently answering with a different tool would hide them.
+     *
+     * @return the provider that was switched to, or null when the selection is left alone.
+     */
+    fun switchToInstalledProvider(): ProviderId? {
+        val selected = snapshot()
+        if (selected.provider.isInstalled()) return null
+        val alternative = providers.entries.firstOrNull { (id, provider) -> id != selected.providerId && provider.isInstalled() }
+            ?: return null
+        return if (select(alternative.key)) alternative.key else null
+    }
+
     /** @return true when a different provider was actually selected. */
     fun select(providerId: ProviderId): Boolean {
         val changed = synchronized(lock) {

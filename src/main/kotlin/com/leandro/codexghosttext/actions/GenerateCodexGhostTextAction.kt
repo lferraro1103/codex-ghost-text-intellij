@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
@@ -41,7 +42,11 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
             val router = project.getService(ProviderRouterService::class.java)
+            // The only automatic substitution: a selected CLI that is not installed while the
+            // other one is. It is announced, never silent.
+            val substituted = router.switchToInstalledProvider()
             val selectedProvider = router.snapshot()
+            if (substituted != null) notify(project, ProviderActionFeedback.substitutionMessage(substituted), NotificationType.INFORMATION)
             val dispatch = project.getService(ActionGenerationRequestTracker::class.java)
                 .capture(selectedProvider) { router.isCurrent(selectedProvider) }
             // A proposal is independent from a request. Remove an old inlay before starting one
@@ -86,16 +91,14 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                     when (result) {
                         is GenerationResult.Success -> {
                             val shown = project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
-                            if (!shown) NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                                .createNotification("No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING).notify(project)
+                            if (!shown) notify(project, "No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING)
                         }
                         is GenerationResult.Failure -> {
                             val message = buildString {
                                 append(result.message)
                                 failureDump?.let { append("\nDiagnóstico guardado en: $it") }
                             }
-                            NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                                .createNotification(message, NotificationType.WARNING).notify(project)
+                            notify(project, message, NotificationType.WARNING)
                         }
                     }
                 }
@@ -104,9 +107,13 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         }
 
         project ?: return
+        notify(project, INVALID_SELECTION_MESSAGE, NotificationType.INFORMATION)
+    }
+
+    private fun notify(project: Project, message: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP_ID)
-            .createNotification(INVALID_SELECTION_MESSAGE, NotificationType.INFORMATION)
+            .createNotification(message, type)
             .notify(project)
     }
 

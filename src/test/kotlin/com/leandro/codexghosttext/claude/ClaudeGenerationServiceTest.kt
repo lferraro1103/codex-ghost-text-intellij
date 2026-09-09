@@ -211,6 +211,8 @@ private class ScriptedClaudeRunner(vararg results: ClaudeProcessResult) : Claude
     var cancelCalls = 0
         private set
 
+    override fun isInstalled(): Boolean = true
+
     override fun probe() = ClaudeCapabilityProfile(Path.of("C:/tools/claude.exe"), ProviderDiagnostic.READY, ClaudeProcessRunner.requiredCapabilityFlags)
 
     override fun run(profile: ClaudeCapabilityProfile, request: ClaudeProcessRequest): ClaudeProcessResult {

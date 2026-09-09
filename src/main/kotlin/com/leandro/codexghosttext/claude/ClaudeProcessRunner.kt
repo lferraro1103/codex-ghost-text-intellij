@@ -18,6 +18,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * root with an explicit read-only tool surface.
  */
 interface ClaudeProcessRunner {
+    /** Filesystem-only check, so the router can ask before every request without starting Claude. */
+    fun isInstalled(): Boolean
+
     fun probe(): ClaudeCapabilityProfile
 
     fun run(profile: ClaudeCapabilityProfile, request: ClaudeProcessRequest): ClaudeProcessResult
@@ -43,7 +46,7 @@ interface ClaudeProcessRunner {
         )
 
         /** Optional execution bounds are used when the installed CLI advertises them. */
-        val optionalCapabilityFlags = setOf("--max-turns")
+        val optionalCapabilityFlags = setOf("--max-turns", "--append-system-prompt")
     }
 }
 
@@ -73,6 +76,12 @@ data class ClaudeProcessRequest(
     val prompt: String,
     val resumeSessionId: String?,
     val projectRoot: Path,
+    /**
+     * Appended to the system prompt, so it must be byte-identical for every request of a resumed
+     * conversation: Claude's prompt cache keys on that prefix, and a per-request change would make
+     * every generation re-read the whole conversation.
+     */
+    val systemPromptSuffix: String = "",
 )
 
 data class ClaudeProcessResult(
@@ -286,7 +295,38 @@ internal class DefaultClaudeProcessRunner(
 ) : ClaudeProcessRunner {
     private val running = AtomicBoolean(false)
 
+    /**
+     * A successful probe costs three subprocesses (`--version`, `--help`, `auth status`), which
+     * used to run before every single generation. The result only changes when the executable
+     * changes or the user logs in or out, so a ready profile is cached briefly and keyed by the
+     * executable's identity.
+     */
+    @Volatile
+    private var cachedProfile: CachedProfile? = null
+
+    override fun isInstalled(): Boolean = executableLocator.find() != null
+
     override fun probe(): ClaudeCapabilityProfile {
+        val executable = executableLocator.find()
+        cachedProfile
+            ?.takeIf { it.matches(executable) && it.isFresh() }
+            ?.let { return it.profile }
+        val profile = probeUncached()
+        if (profile.isReady) cachedProfile = CachedProfile(profile, fingerprint(executable), System.nanoTime())
+        return profile
+    }
+
+    private fun fingerprint(executable: Path?): String? = executable?.let {
+        runCatching { "$it:${Files.size(it)}:${Files.getLastModifiedTime(it).toMillis()}" }.getOrNull() ?: it.toString()
+    }
+
+    private inner class CachedProfile(val profile: ClaudeCapabilityProfile, val fingerprint: String?, val takenAt: Long) {
+        fun matches(executable: Path?): Boolean = fingerprint != null && fingerprint == fingerprint(executable)
+
+        fun isFresh(): Boolean = System.nanoTime() - takenAt < TimeUnit.MILLISECONDS.toNanos(PROFILE_CACHE_MILLIS)
+    }
+
+    private fun probeUncached(): ClaudeCapabilityProfile {
         val executable = executableLocator.find() ?: return ClaudeCapabilityProfile(null, ProviderDiagnostic.MISSING_EXECUTABLE)
         val version = execute(executable, listOf("--version"))
         version.diagnostic?.let { return ClaudeCapabilityProfile(executable, it) }
@@ -343,6 +383,13 @@ internal class DefaultClaudeProcessRunner(
                 add("--permission-mode")
                 // With dontAsk, anything outside the explicit tool surface is denied headlessly.
                 add("dontAsk")
+                // Optional: a release without it still works, only without the project brief.
+                request.systemPromptSuffix
+                    .takeIf { it.isNotBlank() && "--append-system-prompt" in profile.supportedFlags }
+                    ?.let { suffix ->
+                    add("--append-system-prompt")
+                    add(suffix)
+                }
                 if ("--max-turns" in profile.supportedFlags) {
                     add("--max-turns")
                     // Reading project files may require several tool/result turns before final code.
@@ -381,7 +428,10 @@ internal class DefaultClaudeProcessRunner(
 
     override fun cancel() = commandExecutor.cancel()
 
-    override fun dispose() = cancel()
+    override fun dispose() {
+        cachedProfile = null
+        cancel()
+    }
 
     private fun execute(executable: Path, arguments: List<String>): ClaudeProcessResult {
         val raw = commandExecutor.execute(
@@ -452,6 +502,7 @@ internal class DefaultClaudeProcessRunner(
             "--disallowed-tools" to listOf("--disallowedTools", "--disallowed-tools"),
             "--permission-mode" to listOf("--permission-mode"),
             "--max-turns" to listOf("--max-turns"),
+            "--append-system-prompt" to listOf("--append-system-prompt"),
             "--resume" to listOf("--resume", "-r"),
         )
 
@@ -461,6 +512,7 @@ internal class DefaultClaudeProcessRunner(
         private val QUOTA_FAILURE = Regex("""quota|usage\s+limit|rate\s+limit|credit\s+balance|limit\s+(?:reached|exceeded)""", RegexOption.IGNORE_CASE)
         private val AUTH_FAILURE = Regex("""not\s+logged\s+in|authentication|unauthorized|invalid\s+(?:token|credentials?)|\b401\b|please\s+login""", RegexOption.IGNORE_CASE)
         private val ARGUMENT_FAILURE = Regex("""unknown\s+(?:option|argument)|unrecognized\s+(?:option|argument)|invalid\s+option""", RegexOption.IGNORE_CASE)
+        private const val PROFILE_CACHE_MILLIS = 120_000L
         private const val PROBE_TIMEOUT_MILLIS = 8_000L
         private const val GENERATION_TIMEOUT_MILLIS = 75_000L
         private const val MAX_PROBE_OUTPUT_BYTES = 64 * 1024

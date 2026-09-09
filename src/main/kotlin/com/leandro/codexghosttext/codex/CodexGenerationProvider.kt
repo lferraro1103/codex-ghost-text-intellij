@@ -20,6 +20,7 @@ class CodexGenerationProvider private constructor(
     // Named apart from the overridden member so the delegation cannot resolve back into itself.
     private val generateProposal: (GenerationRequest) -> GenerationResult,
     private val availability: () -> CodexDiagnostic,
+    private val installed: () -> Boolean = { CodexExecutableLocator.find() != null },
     private val cancel: () -> Unit,
     private val isGenerating: () -> Boolean,
     private val reset: () -> Unit,
@@ -29,7 +30,10 @@ class CodexGenerationProvider private constructor(
         availability = { project.getService(CodexAvailabilityService::class.java).check() },
         cancel = { project.getService(CodexGenerationService::class.java).cancel() },
         isGenerating = { project.getService(CodexGenerationService::class.java).isGenerating() },
-        reset = { project.getService(CodexGenerationService::class.java).resetConversation() },
+        reset = {
+            project.getService(CodexAvailabilityService::class.java).invalidate()
+            project.getService(CodexGenerationService::class.java).resetConversation()
+        },
     )
 
     internal constructor(
@@ -38,10 +42,20 @@ class CodexGenerationProvider private constructor(
         cancel: () -> Unit,
         isGenerating: () -> Boolean,
         reset: () -> Unit,
+        installed: () -> Boolean = { true },
         @Suppress("UNUSED_PARAMETER") testOnly: Boolean = true,
-    ) : this(generate, availability, cancel, isGenerating, reset)
+    ) : this(
+        generateProposal = generate,
+        availability = availability,
+        installed = installed,
+        cancel = cancel,
+        isGenerating = isGenerating,
+        reset = reset,
+    )
 
     override val providerId: ProviderId = ProviderId.CODEX
+
+    override fun isInstalled(): Boolean = installed()
 
     override fun checkAvailability(): ProviderDiagnostic = when (availability()) {
         CodexDiagnostic.CHATGPT_READY -> ProviderDiagnostic.READY
