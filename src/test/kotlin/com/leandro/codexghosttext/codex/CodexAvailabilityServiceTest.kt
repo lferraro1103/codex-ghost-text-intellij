@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.BufferedReader
 import java.io.StringReader
+import java.nio.file.Files
 
 class CodexAvailabilityServiceTest {
     @Test
@@ -16,6 +17,22 @@ class CodexAvailabilityServiceTest {
         )
 
         assertEquals(CodexDiagnostic.CHATGPT_READY, result)
+    }
+
+    @Test
+    fun `accepts a ChatGPT account that also advertises required OpenAI auth`() {
+        val result = CodexProtocol.classifyAccount(
+            """{"id":2,"result":{"account":{"type":"chatgpt","planType":"plus"},"requiresOpenaiAuth":true}}""",
+        )
+
+        assertEquals(CodexDiagnostic.CHATGPT_READY, result)
+    }
+
+    @Test
+    fun `requires login when the account is null`() {
+        val result = CodexProtocol.classifyAccount("""{"id":2,"result":{"account":null,"requiresOpenaiAuth":true}}""")
+
+        assertEquals(CodexDiagnostic.LOGIN_REQUIRED, result)
     }
 
     @Test
@@ -78,7 +95,17 @@ class CodexAvailabilityServiceTest {
     }
 
     @Test
-    fun `does not invent an executable when neither supported location contains one`() {
-        assertNull(CodexExecutableLocator.find(path = "C:\\missing-codex-bin", localAppData = null))
+    fun `does not invent an executable when no supported location contains one`() {
+        // An empty home keeps the search off this machine's own Codex install.
+        val home = Files.createTempDirectory("codex-ghost-text-home").toString()
+
+        assertNull(
+            CodexExecutableLocator.find(
+                path = "C:\\missing-codex-bin",
+                localAppData = null,
+                userHome = home,
+                osName = "Windows 11",
+            ),
+        )
     }
 }

@@ -14,6 +14,16 @@ class SelectedCommentResolverTest : LightJavaCodeInsightFixtureTestCase() {
         assertValid("/** doc comment */\nclass Sample {}", 0, "/** doc comment */".length)
     }
 
+    fun testCarriesTheEditedFilesLanguageAndName() {
+        myFixture.configureByText("Sample.java", "// comment\nclass Sample {}")
+        myFixture.editor.selectionModel.setSelection(0, "// comment".length)
+
+        val selected = SelectedCommentResolver.resolve(myFixture.editor, myFixture.file)
+
+        assertEquals("Java", selected?.language)
+        assertEquals("Sample.java", selected?.fileName)
+    }
+
     fun testRejectsEmptyPartialMixedAndMultipleSelections() {
         assertInvalid("// comment\nclass Sample {}", 0, 0)
         assertInvalid("// comment\nclass Sample {}", 1, 5)
