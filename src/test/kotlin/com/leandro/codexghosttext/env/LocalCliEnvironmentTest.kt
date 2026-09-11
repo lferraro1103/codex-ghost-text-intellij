@@ -54,7 +54,7 @@ class LocalCliEnvironmentTest {
     fun `macOS lookup covers Homebrew MacPorts and version manager shims`() {
         val candidates = LocalCliExecutableSearch
             .candidates(listOf("claude"), path = "", userHome = "/Users/example", osName = "Mac OS X")
-            .map { it.path.toString() }
+            .map { it.path.toString().replace('\\', '/') }
 
         assertTrue(candidates.contains("/opt/homebrew/bin/claude"))
         assertTrue(candidates.contains("/usr/local/bin/claude"))
