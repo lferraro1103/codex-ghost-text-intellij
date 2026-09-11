@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The plugin resolves and launches local CLIs differently per operating system, and the
+    # executable bit on gradlew only matters off Windows, so every supported host is built.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test
+        if: runner.os != 'Windows'
+        run: ./gradlew test --no-daemon
+
+      - name: Test
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat test --no-daemon
+
+      - name: Build plugin
+        if: runner.os == 'Linux'
+        run: ./gradlew buildPlugin --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: codex-ghost-text
+          path: build/distributions/*.zip

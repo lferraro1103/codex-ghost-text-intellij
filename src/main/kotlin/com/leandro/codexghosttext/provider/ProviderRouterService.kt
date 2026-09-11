@@ -10,6 +10,7 @@ import com.leandro.codexghosttext.generation.GenerationResult
 import com.leandro.codexghosttext.generation.LocalGenerationProvider
 import com.leandro.codexghosttext.generation.ProviderDiagnostic
 import com.leandro.codexghosttext.generation.ProviderId
+import com.leandro.codexghosttext.preview.GhostLoadingIndicator
 import com.leandro.codexghosttext.preview.GhostPreviewService
 
 /** A diagnostic paired with the provider that was selected when it was checked. */
@@ -56,7 +57,10 @@ class ProviderRouterService private constructor(
             ProviderId.CODEX to project.getService(CodexGenerationProvider::class.java),
             ProviderId.CLAUDE to project.getService(ClaudeGenerationService::class.java),
         ),
-        cancelPreview = { project.getService(GhostPreviewService::class.java).cancel() },
+        cancelPreview = {
+            project.getService(GhostPreviewService::class.java).cancel()
+            project.getService(GhostLoadingIndicator::class.java).hide()
+        },
         notifySelection = { snapshot ->
             project.messageBus.syncPublisher(SELECTION_TOPIC).selectionChanged(snapshot)
         },
@@ -105,6 +109,23 @@ class ProviderRouterService private constructor(
         selected.provider.resetConversation()
         cancelPreview()
         return selected.providerId
+    }
+
+    /**
+     * Switches to the other provider when the selected CLI is not installed and the other one is.
+     *
+     * This is the only automatic substitution: a provider that is installed but logged out, out of
+     * quota, or failing still reports its own diagnostic, because those are the user's to resolve
+     * and silently answering with a different tool would hide them.
+     *
+     * @return the provider that was switched to, or null when the selection is left alone.
+     */
+    fun switchToInstalledProvider(): ProviderId? {
+        val selected = snapshot()
+        if (selected.provider.isInstalled()) return null
+        val alternative = providers.entries.firstOrNull { (id, provider) -> id != selected.providerId && provider.isInstalled() }
+            ?: return null
+        return if (select(alternative.key)) alternative.key else null
     }
 
     /** @return true when a different provider was actually selected. */

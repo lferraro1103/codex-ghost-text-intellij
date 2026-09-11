@@ -5,6 +5,8 @@
   <description>Generate a guarded Codex proposal from a selected comment.</description>
 
   <depends>com.intellij.modules.platform</depends>
+  <!-- PSI, references and the structure view, used to name the project files a proposal depends on. -->
+  <depends>com.intellij.modules.lang</depends>
 
   <extensions defaultExtensionNs="com.intellij">
     <notificationGroup id="Codex Ghost Text" displayType="BALLOON" isLogByDefault="false" />

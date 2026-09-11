@@ -7,11 +7,15 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.leandro.codexghosttext.context.ConversationContextMemory
+import com.leandro.codexghosttext.context.ProjectContextGathering
 import com.leandro.codexghosttext.diagnostics.GenerationDiagnosticDump
 import com.leandro.codexghosttext.generation.GenerationRequest
 import com.leandro.codexghosttext.generation.GenerationResult
+import com.leandro.codexghosttext.preview.GhostLoadingIndicator
 import com.leandro.codexghosttext.preview.GhostPreviewService
 import com.leandro.codexghosttext.provider.ProviderRouterService
 import com.leandro.codexghosttext.provider.ProviderSelectionSnapshot
@@ -40,13 +44,20 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         val project = event.project
         if (selectedComment != null && editor != null && project != null) {
             val router = project.getService(ProviderRouterService::class.java)
+            // The only automatic substitution: a selected CLI that is not installed while the
+            // other one is. It is announced, never silent.
+            val substituted = router.switchToInstalledProvider()
             val selectedProvider = router.snapshot()
+            if (substituted != null) notify(project, ProviderActionFeedback.substitutionMessage(substituted), NotificationType.INFORMATION)
             val dispatch = project.getService(ActionGenerationRequestTracker::class.java)
                 .capture(selectedProvider) { router.isCurrent(selectedProvider) }
             // A proposal is independent from a request. Remove an old inlay before starting one
             // selected provider request, but never write the document from this action.
             project.getService(GhostPreviewService::class.java).cancel()
             selectedProvider.provider.cancel()
+            // A placeholder under the comment, so the request is visible where the user is looking
+            // and not only in the status bar. It writes nothing and is removed on every outcome.
+            project.getService(GhostLoadingIndicator::class.java).show(editor, selectedComment.range)
             val snapshot = editor.document.text
             val snapshotStamp = editor.document.modificationStamp
             val generationStatus = project.getService(CodexGenerationStatusService::class.java)
@@ -57,9 +68,22 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                 range = selectedComment.range,
                 // This key is provider state metadata only. Claude's process/prompt must never see it.
                 projectRoot = project.basePath?.let { runCatching { File(it).canonicalPath }.getOrDefault(it) } ?: project.locationHash,
+                language = selectedComment.language,
+                fileName = selectedComment.fileName,
             )
+            val psiFile = event.getData(CommonDataKeys.PSI_FILE)
             ApplicationManager.getApplication().executeOnPooledThread {
-                val result = runCatching { dispatch.generate(request) }
+                // Resolved project context, gathered off the EDT under a read action that yields to
+                // the user's own edits. It is optional: an indexing IDE or a language without a
+                // structure view simply produces less context, never a failed request.
+                val dependencies = ProjectContextGathering.gather(project, psiFile, selectedComment.range)
+                val memory = project.getService(ConversationContextMemory::class.java)
+                val skeletons = memory.unsent(selectedProvider.providerId, dependencies.skeletons)
+                val enriched = request.copy(
+                    dependencyPaths = dependencies.paths,
+                    dependencySkeletons = skeletons,
+                )
+                val result = runCatching { dispatch.generate(enriched) }
                     .getOrElse { GenerationResult.Failure("Falló la generación local.") }
                 val failureDump = (result as? GenerationResult.Failure)?.let { failure ->
                     GenerationDiagnosticDump.write(
@@ -69,8 +93,12 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                         source = "generation",
                     )
                 }
+                // Only a proposal that came back proves the conversation received the
+                // declarations; otherwise they are offered again on the next request.
+                if (result is GenerationResult.Success) memory.remember(selectedProvider.providerId, skeletons)
                 ApplicationManager.getApplication().invokeLater {
                     generationStatus.hide(statusRequest)
+                    if (!project.isDisposed) project.getService(GhostLoadingIndicator::class.java).hide()
                     // The selected comment is only input to the request. The user can navigate
                     // elsewhere while a provider works; an edit or provider switch invalidates it.
                     if (!dispatch.isCurrent() || project.isDisposed || editor.isDisposed ||
@@ -79,16 +107,14 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
                     when (result) {
                         is GenerationResult.Success -> {
                             val shown = project.getService(GhostPreviewService::class.java).show(editor, selectedComment.range, result.code)
-                            if (!shown) NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                                .createNotification("No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING).notify(project)
+                            if (!shown) notify(project, "No puedo mostrar la propuesta en este editor o selección.", NotificationType.WARNING)
                         }
                         is GenerationResult.Failure -> {
                             val message = buildString {
                                 append(result.message)
                                 failureDump?.let { append("\nDiagnóstico guardado en: $it") }
                             }
-                            NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID)
-                                .createNotification(message, NotificationType.WARNING).notify(project)
+                            notify(project, message, NotificationType.WARNING)
                         }
                     }
                 }
@@ -97,9 +123,13 @@ class GenerateCodexGhostTextAction : DumbAwareAction() {
         }
 
         project ?: return
+        notify(project, INVALID_SELECTION_MESSAGE, NotificationType.INFORMATION)
+    }
+
+    private fun notify(project: Project, message: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP_ID)
-            .createNotification(INVALID_SELECTION_MESSAGE, NotificationType.INFORMATION)
+            .createNotification(message, type)
             .notify(project)
     }
 

@@ -10,11 +10,13 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 
 - Run **Generate Codex Ghost Text** on a selected comment from the editor context menu.
 - Manual requests only; it never generates while you type.
-- A generation spinner in the IDE status bar.
+- A generation spinner in the IDE status bar, and a loading placeholder under the selected comment while a provider works.
 - Multi-line translucent green preview, aligned to the comment indentation.
+- The request carries the edited file's language, and a proposal fenced as another language is rejected.
+- The request also names the project files the surrounding code resolves to, with their declarations (signatures, never bodies), so a proposal uses your own classes correctly instead of inventing them.
 - Accept with `|`; dismiss with `Esc`.
 - The document changes only after explicit acceptance.
-- Choose **Codex** or **Claude** from a persistent project-local selector in the status bar.
+- Choose **Codex** or **Claude** from a persistent project-local selector in the status bar; if the selected CLI is not installed and the other one is, the plugin switches and says so.
 - One chat per provider and IntelliJ project, reused across requests and after reopening the project.
 - **Tools → Reset Provider Conversation for This Project** is the only way to deliberately open a fresh chat for that provider.
 - Responses are filtered to insertable code only, without explanations or Markdown fences.
@@ -24,6 +26,11 @@ No API key is required: it uses the authenticated Codex CLI session from your no
 - IntelliJ IDEA 2025.3 (build 253) or newer. The same ZIP is compiled against 2025.3 and verified against 2026.1 and 2026.2.
 - [Codex CLI](https://developers.openai.com/codex/cli/) installed and available as `codex` on `PATH` (Windows also detects the Codex installation under `LOCALAPPDATA`).
 - A ChatGPT account with Codex access, logged in locally.
+
+On macOS and Linux an IDE started from the Dock, Finder, Spotlight, or a desktop launcher does
+not inherit the shell `PATH`. Both providers are therefore resolved and launched with the
+login-shell environment, plus the usual Homebrew, MacPorts, npm, nvm, pnpm, bun, and
+version-manager shim directories, so no IDE-specific `PATH` configuration is required.
 
 ### Installation
 
@@ -62,7 +69,9 @@ Compatibility is checked from the security capabilities advertised by `claude --
 
 ### Privacy and safety
 
-Codex and Claude receive the project folder as their working directory. Each request adds only the selected comment plus nearby file context: up to 2,000 preceding and 4,000 following characters. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
+Codex and Claude receive the project folder as their working directory, so **the CLI itself can read project files the plugin never sent**: Claude through `Read`, `Glob`, and `Grep`, Codex through its read-only sandbox. That is what makes a proposal fit the surrounding code, and it is the agent's own decision, not something the plugin transmits.
+
+What the plugin transmits is bounded: the selected comment; nearby file context of up to 2,000 preceding and 4,000 following characters; the edited file's language and name; the relative paths of at most 8 project files the surrounding code resolves to, with a declaration-only rendering of each — signatures, never method bodies, comments, or literals — capped at 40 lines and 4,000 characters per file; and, once per conversation, the project's content-root paths with the instruction to verify project symbols instead of inventing them. Only files inside this project's own source roots are considered: the JDK, libraries, and anything outside a source root are never described. Declarations are sent once per provider conversation and not repeated, and no other file contents are ever sent by the plugin. Claude may inspect project files only through `Read`, `Glob`, and `Grep`; it cannot run commands, edit files, browse the web, use agents, or use MCP/plugins.
 
 The session uses a read-only sandbox, `never` approval, disabled web search, and disabled plugins/tools. A proposal is cancelled if Codex attempts to modify a file or use a tool. The plugin never applies changes automatically and discards a response when its preview closes.
 
@@ -76,6 +85,13 @@ The session uses a read-only sandbox, `never` approval, disabled web search, and
 | `CodexAvailabilityService` | Checks the executable, ChatGPT authentication, and available quota. |
 | `GhostPreviewService` | Keeps the proposal outside the document and inserts only after acceptance. |
 | `GhostBlockRenderer` | Draws the correctly-indented green block. |
+| `GhostLoadingIndicator` | Shows the loading placeholder under the comment while a request runs. |
+| `SourceLanguage` | Puts the file's language in the prompt and rejects a proposal fenced as another one. |
+| `ProjectContextService` | Builds the once-per-conversation project brief and the look-it-up instruction. |
+| `ProjectDependencyCollector` | Resolves the project files the code depends on and renders their declarations. |
+| `ConversationContextMemory` | Tracks what each provider conversation was already told, so nothing is resent. |
+| `CodeProposal` | The single definition of "this answer is insertable code", shared by both providers. |
+| `StrictJson` | The strict JSON reader both providers use to read CLI records. |
 | `CodexGhostTypedHandler` | Captures `|` before IntelliJ writes it and accepts the proposal. |
 | `GhostKeyHandlerInstaller` | Cancels an active proposal with `Esc`. |
 
@@ -86,6 +102,13 @@ The project uses Kotlin, Java 21, and Gradle with the IntelliJ Platform Gradle P
 ```powershell
 .\gradlew.bat buildPlugin --no-daemon
 .\gradlew.bat test --no-daemon
+```
+
+On macOS and Linux:
+
+```bash
+./gradlew buildPlugin --no-daemon
+./gradlew test --no-daemon
 ```
 
 The ZIP is written to `build/distributions/codex-ghost-text-<version>.zip`.
@@ -106,11 +129,13 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 
 - Ejecutar **Generate Codex Ghost Text** sobre un comentario seleccionado desde el menú contextual del editor.
 - Solicitudes manuales: no genera código mientras escribís.
-- Indicador de generación en la barra de estado del IDE.
+- Indicador de generación en la barra de estado del IDE, y un placeholder de carga bajo el comentario seleccionado mientras el proveedor trabaja.
 - Vista previa multilínea verde y translúcida, alineada con la sangría del comentario.
+- La consulta lleva el lenguaje del archivo editado, y se rechaza una propuesta marcada como otro lenguaje.
+- La consulta también nombra los archivos del proyecto a los que resuelve el código de alrededor, con sus declaraciones (firmas, nunca cuerpos), para que la propuesta use tus clases correctamente en lugar de inventarlas.
 - Aceptación con `|`; cancelación con `Esc`.
 - El documento sólo cambia después de aceptar explícitamente.
-- Elegí **Codex** o **Claude** desde un selector persistente y local al proyecto en la barra de estado.
+- Elegí **Codex** o **Claude** desde un selector persistente y local al proyecto en la barra de estado; si la CLI elegida no está instalada y la otra sí, el plugin cambia de proveedor y lo avisa.
 - Un chat por proveedor y proyecto de IntelliJ, reutilizado entre consultas y al reabrirlo.
 - **Tools → Reset Provider Conversation for This Project** es la única forma de abrir deliberadamente un chat nuevo para ese proveedor.
 - Las respuestas se filtran para aceptar únicamente código insertable, sin explicaciones ni bloques Markdown.
@@ -120,6 +145,11 @@ No requiere una API key: usa la sesión de Codex CLI ya autenticada con la cuent
 - IntelliJ IDEA 2025.3 (build 253) o posterior. El mismo ZIP se compila contra 2025.3 y se verifica contra 2026.1 y 2026.2.
 - [Codex CLI](https://developers.openai.com/codex/cli/) instalado y disponible como `codex` en `PATH` (Windows también detecta la instalación de Codex en `LOCALAPPDATA`).
 - Una cuenta de ChatGPT con acceso a Codex e inicio de sesión local.
+
+En macOS y Linux, un IDE abierto desde el Dock, Finder, Spotlight o un lanzador de escritorio no
+hereda el `PATH` de la shell. Por eso ambos proveedores se resuelven y se ejecutan con el entorno
+de la shell de login, más los directorios habituales de Homebrew, MacPorts, npm, nvm, pnpm, bun y
+los shims de los gestores de versiones: no hace falta configurar el `PATH` del IDE.
 
 ### Instalación
 
@@ -158,7 +188,9 @@ La compatibilidad se comprueba mediante las capacidades de seguridad informadas 
 
 ### Privacidad y seguridad
 
-Codex y Claude reciben la carpeta del proyecto como directorio de trabajo. Cada solicitud agrega sólo el comentario seleccionado y contexto cercano: hasta 2,000 caracteres anteriores y 4,000 posteriores. Claude puede consultar archivos del proyecto únicamente mediante `Read`, `Glob` y `Grep`; no puede ejecutar comandos, editar archivos, navegar la web, usar agentes ni MCP/plugins.
+Codex y Claude reciben la carpeta del proyecto como directorio de trabajo, así que **la propia CLI puede leer archivos del proyecto que el plugin nunca envió**: Claude con `Read`, `Glob` y `Grep`, Codex con su sandbox de sólo lectura. Eso es lo que hace que la propuesta encaje con el código que la rodea, y es una decisión del agente, no algo que transmita el plugin.
+
+Lo que transmite el plugin está acotado: el comentario seleccionado; contexto cercano de hasta 2.000 caracteres anteriores y 4.000 posteriores; el lenguaje y el nombre del archivo editado; las rutas relativas de como máximo 8 archivos del proyecto a los que resuelve el código de alrededor, con una representación de sólo declaraciones de cada uno —firmas, nunca cuerpos de métodos, comentarios ni literales—, limitada a 40 líneas y 4.000 caracteres por archivo; y, una vez por conversación, las carpetas raíz del proyecto con la instrucción de verificar los símbolos del proyecto en lugar de inventarlos. Sólo se consideran archivos dentro de las carpetas de fuentes del propio proyecto: el JDK, las bibliotecas y cualquier cosa fuera de una carpeta de fuentes nunca se describen. Las declaraciones se envían una sola vez por conversación de cada proveedor y no se repiten, y el plugin no envía ningún otro contenido de archivos. Claude puede consultar archivos del proyecto únicamente mediante `Read`, `Glob` y `Grep`; no puede ejecutar comandos, editar archivos, navegar la web, usar agentes ni MCP/plugins.
 
 La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desactivada y plugins/herramientas desactivados. La propuesta se cancela si Codex intenta modificar un archivo o utilizar una herramienta. El plugin nunca aplica cambios automáticamente y descarta la respuesta cuando se cierra la vista previa.
 
@@ -172,6 +204,13 @@ La sesión usa sandbox de sólo lectura, aprobación `never`, búsqueda web desa
 | `CodexAvailabilityService` | Comprueba ejecutable, autenticación ChatGPT y cuota disponible. |
 | `GhostPreviewService` | Mantiene la propuesta fuera del documento e inserta sólo al aceptar. |
 | `GhostBlockRenderer` | Dibuja el bloque verde con la sangría correcta. |
+| `GhostLoadingIndicator` | Muestra el placeholder de carga bajo el comentario mientras corre una consulta. |
+| `SourceLanguage` | Pone el lenguaje del archivo en el prompt y rechaza una propuesta marcada como otro. |
+| `ProjectContextService` | Arma el brief del proyecto, una vez por conversación, y la instrucción de verificar. |
+| `ProjectDependencyCollector` | Resuelve los archivos del proyecto de los que depende el código y arma sus declaraciones. |
+| `ConversationContextMemory` | Registra qué se le dijo ya a la conversación de cada proveedor, para no reenviarlo. |
+| `CodeProposal` | La única definición de «esta respuesta es código insertable», compartida por ambos proveedores. |
+| `StrictJson` | El lector JSON estricto que ambos proveedores usan para leer los registros de las CLI. |
 | `CodexGhostTypedHandler` | Captura `|` antes de que IntelliJ lo escriba y acepta la propuesta. |
 | `GhostKeyHandlerInstaller` | Cancela una propuesta activa con `Esc`. |
 
@@ -182,6 +221,13 @@ El proyecto usa Kotlin, Java 21 y Gradle con IntelliJ Platform Gradle Plugin.
 ```powershell
 .\gradlew.bat buildPlugin --no-daemon
 .\gradlew.bat test --no-daemon
+```
+
+En macOS y Linux:
+
+```bash
+./gradlew buildPlugin --no-daemon
+./gradlew test --no-daemon
 ```
 
 El ZIP queda en `build/distributions/codex-ghost-text-<versión>.zip`.

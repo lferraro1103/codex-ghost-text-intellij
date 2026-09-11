@@ -62,6 +62,16 @@ internal object ProviderActionFeedback {
     fun notificationTypeFor(availability: SelectedProviderAvailability): NotificationType =
         if (availability.diagnostic == ProviderDiagnostic.READY) NotificationType.INFORMATION else NotificationType.WARNING
 
+    /** Announced whenever the router had to switch because the selected CLI is not installed. */
+    fun substitutionMessage(switchedTo: ProviderId): String {
+        val missing = ProviderId.entries.first { it != switchedTo }
+        return "No encontré ${displayName(missing)} instalado, así que cambié el proveedor a ${displayName(switchedTo)}."
+    }
+
+    /** The provider-specific message for a failed request, so generation and the Tools action agree. */
+    fun generationMessage(providerId: ProviderId, diagnostic: ProviderDiagnostic): String =
+        messageFor(SelectedProviderAvailability(providerId, diagnostic))
+
     fun resetMessage(providerId: ProviderId): String =
         "La conversación de ${displayName(providerId)} para este proyecto se reinició. La próxima generación abrirá un chat nuevo."
 

@@ -28,6 +28,54 @@ class ClaudeGenerationServiceTest {
     }
 
     @Test
+    fun `unwraps the single Markdown fence Claude wraps a code-only answer in`() {
+        val state = ClaudeProjectConversationState()
+        val runner = ScriptedClaudeRunner(success("```javascript\nfunction sumar(a, b) {\n  return a + b;\n}\n```"))
+
+        val result = ClaudeGenerationService(runner, state).generate(request())
+
+        assertEquals(GenerationResult.Success("function sumar(a, b) {\n  return a + b;\n}"), result)
+    }
+
+    @Test
+    fun `sends the edited file's language in the prompt`() {
+        val runner = ScriptedClaudeRunner(success("fun nueva() = Unit"))
+
+        ClaudeGenerationService(runner, ClaudeProjectConversationState()).generate(
+            request().copy(language = "Kotlin", fileName = "Arbol.kt"),
+        )
+
+        assertTrue(runner.requests.single().prompt.contains("El archivo es Kotlin (Arbol.kt)"))
+    }
+
+    @Test
+    fun `rejects a proposal fenced as a language the edited file is not`() {
+        val runner = ScriptedClaudeRunner(success("```javascript\nfunction sumar(a, b) {\n  return a + b;\n}\n```"))
+
+        val result = ClaudeGenerationService(runner, ClaudeProjectConversationState()).generate(
+            request().copy(language = "Kotlin", fileName = "Arbol.kt"),
+        )
+
+        assertTrue(result is GenerationResult.Failure)
+    }
+
+    @Test
+    fun `accepts a proposal written in a language other than Kotlin or Java`() {
+        val accepted = listOf(
+            "const total = a + b;",
+            "def sumar(a, b):\n    return a + b",
+            "raiz = null;",
+        )
+
+        accepted.forEach { code ->
+            val result = ClaudeGenerationService(ScriptedClaudeRunner(success(code)), ClaudeProjectConversationState())
+                .generate(request())
+
+            assertEquals(GenerationResult.Success(code), result)
+        }
+    }
+
+    @Test
     fun `returns only validated code and persists its Claude session for the same canonical root`() {
         val runner = ScriptedClaudeRunner(success("public void sacarRaiz() {\n  raiz = null;\n}"))
         val state = ClaudeProjectConversationState()
@@ -75,7 +123,7 @@ class ClaudeGenerationServiceTest {
             "{\"type\":\"error\",\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"   \"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"Voy a implementar esto.\"}}",
-            "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"```kotlin\\nfun x() = Unit\\n```\"}}",
+            "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"Esto genera:\\n```kotlin\\nfun x() = Unit\\n```\"}}",
             "{\"session_id\":\"claude-session-1\",\"session_id\":\"other\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\",\"extra\":true}}",
             "{\"session_id\":\"claude-session-1\",\"structured_output\":{\"code\":\"fun x() = Unit\"},\"tool_use\":true}",
@@ -162,6 +210,8 @@ private class ScriptedClaudeRunner(vararg results: ClaudeProcessResult) : Claude
     val requests = mutableListOf<ClaudeProcessRequest>()
     var cancelCalls = 0
         private set
+
+    override fun isInstalled(): Boolean = true
 
     override fun probe() = ClaudeCapabilityProfile(Path.of("C:/tools/claude.exe"), ProviderDiagnostic.READY, ClaudeProcessRunner.requiredCapabilityFlags)
 

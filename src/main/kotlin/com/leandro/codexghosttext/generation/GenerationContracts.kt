@@ -19,6 +19,17 @@ data class GenerationRequest(
     val documentText: String,
     val range: TextRange,
     val projectRoot: String,
+    /**
+     * The edited file's language and name, so a provider proposes code in the language of the
+     * file instead of guessing from the surrounding context. Both are empty only where no file is
+     * available; a provider then falls back to the nearby context exactly as before.
+     */
+    val language: String = "",
+    val fileName: String = "",
+    /** Project files the surrounding code resolves to, as paths relative to the project root. */
+    val dependencyPaths: List<String> = emptyList(),
+    /** Declaration-only renderings of those files, already filtered to what this conversation lacks. */
+    val dependencySkeletons: List<String> = emptyList(),
 )
 
 sealed interface GenerationResult {
@@ -54,6 +65,12 @@ interface LocalGenerationProvider {
     val providerId: ProviderId
 
     fun checkAvailability(): ProviderDiagnostic
+
+    /**
+     * Whether this provider's CLI exists on this machine. It only looks at the filesystem: no
+     * process is started, so the router can ask both providers before every request.
+     */
+    fun isInstalled(): Boolean = true
 
     fun generate(request: GenerationRequest): GenerationResult
 

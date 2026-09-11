@@ -17,32 +17,45 @@ import com.leandro.codexghosttext.generation.ProviderId
  */
 @Service(Service.Level.PROJECT)
 class CodexGenerationProvider private constructor(
-    private val generate: (String, String, TextRange) -> GenerationResult,
+    // Named apart from the overridden member so the delegation cannot resolve back into itself.
+    private val generateProposal: (GenerationRequest) -> GenerationResult,
     private val availability: () -> CodexDiagnostic,
+    private val installed: () -> Boolean = { CodexExecutableLocator.find() != null },
     private val cancel: () -> Unit,
     private val isGenerating: () -> Boolean,
     private val reset: () -> Unit,
 ) : LocalGenerationProvider {
     constructor(project: Project) : this(
-        generate = { comment, document, range ->
-            project.getService(CodexGenerationService::class.java).generate(comment, document, range)
-        },
+        generateProposal = { request -> project.getService(CodexGenerationService::class.java).generate(request) },
         availability = { project.getService(CodexAvailabilityService::class.java).check() },
         cancel = { project.getService(CodexGenerationService::class.java).cancel() },
         isGenerating = { project.getService(CodexGenerationService::class.java).isGenerating() },
-        reset = { project.getService(CodexGenerationService::class.java).resetConversation() },
+        reset = {
+            project.getService(CodexAvailabilityService::class.java).invalidate()
+            project.getService(CodexGenerationService::class.java).resetConversation()
+        },
     )
 
     internal constructor(
-        generate: (String, String, TextRange) -> GenerationResult,
+        generate: (GenerationRequest) -> GenerationResult,
         availability: () -> CodexDiagnostic,
         cancel: () -> Unit,
         isGenerating: () -> Boolean,
         reset: () -> Unit,
+        installed: () -> Boolean = { true },
         @Suppress("UNUSED_PARAMETER") testOnly: Boolean = true,
-    ) : this(generate, availability, cancel, isGenerating, reset)
+    ) : this(
+        generateProposal = generate,
+        availability = availability,
+        installed = installed,
+        cancel = cancel,
+        isGenerating = isGenerating,
+        reset = reset,
+    )
 
     override val providerId: ProviderId = ProviderId.CODEX
+
+    override fun isInstalled(): Boolean = installed()
 
     override fun checkAvailability(): ProviderDiagnostic = when (availability()) {
         CodexDiagnostic.CHATGPT_READY -> ProviderDiagnostic.READY
@@ -60,7 +73,7 @@ class CodexGenerationProvider private constructor(
         if (diagnostic != CodexDiagnostic.CHATGPT_READY) {
             return GenerationResult.Failure(diagnostic.generationFailureMessage())
         }
-        return generate(request.comment, request.documentText, request.range)
+        return generateProposal(request)
     }
 
     override fun cancel() = cancel.invoke()

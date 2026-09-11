@@ -16,7 +16,15 @@ class ClaudeProcessRunnerTest {
         val report = locator.diagnosticReport()
 
         assertTrue(report.contains("candidate[common]=<home>/.local/bin/claude status=missing"))
+        assertTrue(report.contains("candidate[common]=/opt/homebrew/bin/claude"))
         assertTrue(report.contains("pathEntryCount=0"))
+    }
+
+    @Test
+    fun `locator diagnoses Claude Code's own local install directory`() {
+        val locator = PathClaudeExecutableLocator(path = "", userHome = "/Users/example", osName = "Mac OS X")
+
+        assertTrue(locator.diagnosticReport().contains("candidate[provider]=<home>/.claude/local/claude"))
     }
 
     @Test
@@ -32,6 +40,71 @@ class ClaudeProcessRunnerTest {
 
         assertEquals(ProviderDiagnostic.UNSAFE_CAPABILITIES, result.diagnostic)
         assertEquals(2, executor.commands.size)
+    }
+
+    @Test
+    fun `a ready profile is probed once instead of before every request`() {
+        val executable = executableFile()
+        val executor = RecordingClaudeCommandExecutor(
+            ClaudeCommandResult(stdout = "2.1.259"),
+            ClaudeCommandResult(stdout = ready()),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
+        )
+        val runner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(executable), executor, Path.of("."))
+
+        val first = runner.probe()
+        val second = runner.probe()
+
+        assertEquals(ProviderDiagnostic.READY, first.diagnostic)
+        assertEquals(ProviderDiagnostic.READY, second.diagnostic)
+        assertEquals(3, executor.commands.size)
+    }
+
+    @Test
+    fun `a probe that is not ready is never cached`() {
+        val executable = executableFile()
+        val executor = RecordingClaudeCommandExecutor(
+            ClaudeCommandResult(stdout = "2.1.259"),
+            ClaudeCommandResult(stdout = ready()),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":false}"),
+            ClaudeCommandResult(stdout = "2.1.259"),
+            ClaudeCommandResult(stdout = ready()),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
+        )
+        val runner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(executable), executor, Path.of("."))
+
+        assertEquals(ProviderDiagnostic.LOGIN_REQUIRED, runner.probe().diagnostic)
+        assertEquals(ProviderDiagnostic.READY, runner.probe().diagnostic)
+        assertEquals(6, executor.commands.size)
+    }
+
+    @Test
+    fun `the appended system prompt is sent only when the installed CLI advertises the flag`() {
+        val executable = executableFile()
+        val withFlag = RecordingClaudeCommandExecutor(
+            ClaudeCommandResult(stdout = "2.1.259"),
+            ClaudeCommandResult(stdout = ready() + " --append-system-prompt"),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
+            ClaudeCommandResult(stdout = "{\"session_id\":\"s\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}"),
+        )
+        val runner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(executable), withFlag, Path.of("."))
+        val request = ClaudeProcessRequest("prompt", null, Path.of("."), "brief del proyecto")
+
+        runner.run(runner.probe(), request)
+        val arguments = withFlag.commands.last().arguments
+        assertTrue(arguments.contains("--append-system-prompt"))
+        assertEquals("brief del proyecto", arguments[arguments.indexOf("--append-system-prompt") + 1])
+
+        val withoutFlag = RecordingClaudeCommandExecutor(
+            ClaudeCommandResult(stdout = "2.1.259"),
+            ClaudeCommandResult(stdout = ready()),
+            ClaudeCommandResult(stdout = "{\"loggedIn\":true}"),
+            ClaudeCommandResult(stdout = "{\"session_id\":\"s\",\"structured_output\":{\"code\":\"fun x() = Unit\"}}"),
+        )
+        val olderRunner = DefaultClaudeProcessRunner(StaticClaudeExecutableLocator(executable), withoutFlag, Path.of("."))
+        olderRunner.run(olderRunner.probe(), request)
+
+        assertFalse(withoutFlag.commands.last().arguments.contains("--append-system-prompt"))
     }
 
     @Test
@@ -150,6 +223,16 @@ class ClaudeProcessRunnerTest {
 
 internal class StaticClaudeExecutableLocator(private val executable: Path?) : ClaudeExecutableLocator {
     override fun find(): Path? = executable
+}
+
+private fun ready(): String = ClaudeProcessRunner.requiredCapabilityFlags.joinToString(" ")
+
+/** A real file, because the probe cache is keyed by the executable's size and timestamp. */
+private fun executableFile(): Path {
+    val file = java.nio.file.Files.createTempFile("claude", "")
+    file.toFile().setExecutable(true)
+    file.toFile().deleteOnExit()
+    return file
 }
 
 internal class RecordingClaudeCommandExecutor(vararg results: ClaudeCommandResult) : ClaudeCommandExecutor {

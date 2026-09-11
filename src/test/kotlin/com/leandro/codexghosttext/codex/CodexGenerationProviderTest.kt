@@ -13,14 +13,11 @@ import org.junit.Test
 class CodexGenerationProviderTest {
     @Test
     fun `delegates the neutral request unchanged to the existing Codex path`() {
-        var delegated: Triple<String, String, TextRange>? = null
+        var delegated: GenerationRequest? = null
         var cancelled = false
         var reset = false
         val provider = CodexGenerationProvider(
-            generate = { comment, document, range ->
-                delegated = Triple(comment, document, range)
-                GenerationResult.Success("fun generated() = Unit")
-            },
+            generate = { delegated = it; GenerationResult.Success("fun generated() = Unit") },
             availability = { CodexDiagnostic.CHATGPT_READY },
             cancel = { cancelled = true },
             isGenerating = { true },
@@ -30,7 +27,7 @@ class CodexGenerationProviderTest {
 
         assertEquals(ProviderId.CODEX, provider.providerId)
         assertEquals(GenerationResult.Success("fun generated() = Unit"), provider.generate(request))
-        assertEquals(Triple(request.comment, request.documentText, request.range), delegated)
+        assertEquals(request, delegated)
         assertEquals(ProviderDiagnostic.READY, provider.checkAvailability())
         assertTrue(provider.isGenerating())
 
@@ -44,7 +41,7 @@ class CodexGenerationProviderTest {
     @Test
     fun `keeps actionable Codex login quota and connection diagnostics`() {
         fun diagnostic(source: CodexDiagnostic) = CodexGenerationProvider(
-            generate = { _, _, _ -> GenerationResult.Failure("unused") },
+            generate = { GenerationResult.Failure("unused") },
             availability = { source },
             cancel = {},
             isGenerating = { false },
@@ -68,7 +65,7 @@ class CodexGenerationProviderTest {
         ).forEach { (diagnostic, expectedMessage) ->
             var generationCalls = 0
             val provider = CodexGenerationProvider(
-                generate = { _, _, _ -> generationCalls++; GenerationResult.Success("unexpected") },
+                generate = { generationCalls++; GenerationResult.Success("unexpected") },
                 availability = { diagnostic },
                 cancel = {},
                 isGenerating = { false },

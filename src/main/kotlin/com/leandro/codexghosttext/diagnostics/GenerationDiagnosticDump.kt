@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.leandro.codexghosttext.claude.DefaultClaudeProcessRunner
 import com.leandro.codexghosttext.claude.PathClaudeExecutableLocator
 import com.leandro.codexghosttext.codex.CodexExecutableLocator
+import com.leandro.codexghosttext.env.LocalCliEnvironment
 import com.leandro.codexghosttext.generation.ProviderId
 import java.nio.file.Files
 import java.nio.file.Path
@@ -56,6 +57,9 @@ internal object GenerationDiagnosticDump {
         appendLine("projectRoot=${sanitize(projectRoot ?: "<unavailable>")}")
         appendLine("os=${sanitize(System.getProperty("os.name"))} ${sanitize(System.getProperty("os.version"))}")
         appendLine("java=${sanitize(System.getProperty("java.version"))}")
+        // Which PATH was searched matters most on macOS and Linux, where an IDE started outside a
+        // terminal inherits a minimal one. The value itself is never written.
+        appendLine("searchPath=${if (LocalCliEnvironment.searchPathIsInherited()) "ide-process" else "login-shell"}")
         appendLine("codexExecutable=${CodexExecutableLocator.find()?.toString() ?: "<not found>"}")
         val claudeLocator = PathClaudeExecutableLocator()
         appendLine("claudeExecutable=${claudeLocator.find()?.toString() ?: "<not found>"}")
